@@ -290,7 +290,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await update.message.reply_text("🎙️ Got your voice note, transcribing...")
+    transcribe_status = await update.message.reply_text("🎙️ Got your voice note, transcribing...")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     try:
@@ -299,7 +299,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Bug #13 fix: reject oversized voice files before downloading
         voice = update.message.voice
         if voice.file_size and voice.file_size > 10 * 1024 * 1024:  # 10 MB guard
-            await update.message.reply_text(
+            await transcribe_status.edit_text(
                 "⚠️ Voice note too large (max 10 MB). Please send a shorter message."
             )
             return
@@ -319,7 +319,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _voice_trace_ms = round((time.monotonic() - t_transcribe) * 1000)
         logger.info(f"Transcription done for user {user_id} in {_voice_trace_ms}ms")
 
-        await update.message.reply_text(
+        # Edit transcribing status in-place — no orphaned message left in chat
+        await transcribe_status.edit_text(
             f"📝 I heard: *{transcribed_text}*",
             parse_mode="Markdown"
         )
@@ -329,7 +330,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         # Bug #5 fix: exc_info=True logs the full traceback
         logger.error(f"Voice error for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text(
+        await transcribe_status.edit_text(
             "⚠️ Trouble processing your voice note. Please try again."
         )
 

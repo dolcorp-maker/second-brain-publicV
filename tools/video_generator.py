@@ -96,9 +96,10 @@ def generate_video_gif(prompt: str) -> dict:
         safe_name = "".join(
             c for c in prompt[:30] if c.isalnum() or c == " "
         ).strip().replace(" ", "_")
+        ts = int(time.time())
 
-        mp4_path = VIDEO_DIR / f"{safe_name}.mp4"
-        gif_path = VIDEO_DIR / f"{safe_name}.gif"
+        mp4_path = VIDEO_DIR / f"{safe_name}_{ts}.mp4"
+        gif_path = VIDEO_DIR / f"{safe_name}_{ts}.gif"
 
         # ── Step 2: Start Veo generation ──────────────────────────────────────
         print(f"🎬 Starting Veo: {enhanced_prompt[:60]}...")

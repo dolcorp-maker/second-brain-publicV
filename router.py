@@ -74,11 +74,19 @@ FORCE_CLAUDE = [
     "my api keys",
     "search notes",
     "find note",
-    # Reminders — Gemini returns tool=none for set_reminder; Claude handles reliably
+    # Reminders — all ops forced to Claude (Gemini silently fails most of these)
     "remind me",
     "set a reminder",
     "set reminder",
     "reminder for",
+    "reminder in",
+    "add a reminder",
+    "new reminder",
+    "my reminders",
+    "list reminders",
+    "show reminders",
+    "cancel reminder",
+    "delete reminder",
     "create.*reminder",
     "schedule.*reminder",
     # Navigation / Maps — Claude extracts destination, origin, times (Hebrew + English)
@@ -141,8 +149,7 @@ SIMPLE_KEYWORDS = [
     "latest news", "current price", "how much is",
     # Greetings — whole word only, no longer matches 'machines'
     "hi", "hello", "hey", "help", "what can you do",
-    # Reminders — list/cancel are safe for Gemini; setting is FORCE_CLAUDE above
-    "list reminders", "show reminders", "cancel reminder", "delete reminder",
+    # Reminders — all ops are now in FORCE_CLAUDE above
     # Maccabi
     "maccabi", "next match", "next game",
     # Notes vault — write/modify ops stay simple; reads/searches are FORCE_CLAUDE above
@@ -167,7 +174,7 @@ def classify_message(message: str) -> str:
     #    before the word-count fallback fires.
     first_words = " ".join(msg.split()[:10])
     if (re.search(r'\b(gif|video|animation|animate)\b', first_words)
-            and re.search(r'\b(make|create|generate|prepare|give|want|need|get|build)\b', first_words)):
+            and re.search(r'\b(make|create|generate|prepare|give|want|need|get|build|animate)\b', first_words)):
         logger.info("[ROUTE] claude-forced (gif/video in first 10 words)")
         return "complex"
 

@@ -188,6 +188,63 @@ def get_due_reminders() -> list:
         return []
 
 
+# ── Date/time helpers (inlined — no google_services dependency) ───────────────
+
+def _parse_date(date_str: str):
+    """Parse natural language or formatted date string into a datetime object."""
+    import re as _re
+    date_str = date_str.strip().lower()
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if date_str in ("today", "now"):
+        return today
+    if date_str == "tomorrow":
+        return today + timedelta(days=1)
+    if date_str == "yesterday":
+        return today - timedelta(days=1)
+
+    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    if date_str in days:
+        target = days.index(date_str)
+        current = today.weekday()
+        delta = (target - current) % 7
+        if delta == 0:
+            delta = 7
+        return today + timedelta(days=delta)
+
+    formats = [
+        "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y",
+        "%d %B %Y", "%B %d %Y", "%B %d, %Y",
+        "%d %B", "%B %d",
+    ]
+    for fmt in formats:
+        try:
+            parsed = datetime.strptime(date_str, fmt)
+            if parsed.year == 1900:
+                parsed = parsed.replace(year=today.year)
+                if parsed < today:
+                    parsed = parsed.replace(year=today.year + 1)
+            return parsed
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_time(time_str: str, base_date: datetime) -> datetime:
+    """Parse a time string like '14:00', '2pm', '9am' into a datetime."""
+    time_str = time_str.strip().lower()
+    for fmt in ["%I:%M%p", "%I%p", "%H:%M", "%H"]:
+        try:
+            parsed = datetime.strptime(time_str, fmt)
+            return base_date.replace(
+                hour=parsed.hour, minute=parsed.minute,
+                second=0, microsecond=0,
+            )
+        except ValueError:
+            continue
+    return base_date.replace(hour=12, minute=0, second=0, microsecond=0)
+
+
 def parse_reminder_due(when: str) -> str:
     """
     Convert a natural language time expression into an ISO datetime string.
@@ -200,8 +257,6 @@ def parse_reminder_due(when: str) -> str:
         "Friday at 9am"      → "2026-02-28T09:00:00"
         "2026-03-05 at 15:00" → "2026-03-05T15:00:00"
     """
-    from tools.google_services import _parse_date, _parse_time
-
     when = when.strip().lower()
     now = datetime.now()
 

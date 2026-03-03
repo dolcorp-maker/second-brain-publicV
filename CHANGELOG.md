@@ -4,6 +4,40 @@ Newest entry at the top. One section per session. Bullets only.
 
 ---
 
+## 2026-03-03 — Bug fixes: routing, voice UX, reminders dependency, GIF collision
+
+**`router.py` — Bug 1 (reminder routing regression):**
+- Moved `list reminders`, `show reminders`, `cancel reminder`, `delete reminder` from `SIMPLE_KEYWORDS` → `FORCE_CLAUDE` — Gemini was silently failing these.
+- Added missing phrases to `FORCE_CLAUDE`: `reminder in`, `add a reminder`, `new reminder`, `my reminders`.
+- Removed the now-empty reminders comment line from `SIMPLE_KEYWORDS`.
+
+**`router.py` — Bug 4 (animate not caught by early GIF check):**
+- Added `animate` to the verb group in the early first-10-words GIF check.
+- Before: `"animate a cat..."` matched the video keyword group but NOT the verb group → fell through to Gemini.
+- After: `animate` satisfies both groups simultaneously → routes to Claude.
+
+**`main.py` — Bug 2 (transcribing status message leaked):**
+- Stored the initial "🎙️ Got your voice note, transcribing..." message as `transcribe_status`.
+- All voice handler outcomes now edit `transcribe_status` in-place instead of sending new messages.
+  - 10 MB guard early return → edits to "⚠️ Voice note too large..."
+  - Transcription success → edits to "📝 I heard: ..."
+  - Exception handler → edits to "⚠️ Trouble processing..."
+- Previously: 3 separate messages appeared for every voice input; the "transcribing" message was never removed.
+
+**`tools/reminders.py` — Bug 3 (hidden google_services dependency):**
+- Inlined `_parse_date()` and `_parse_time()` directly above `parse_reminder_due()`.
+- Removed `from tools.google_services import _parse_date, _parse_time` from inside `parse_reminder_due()`.
+- Fix: reminder setting no longer silently breaks if `ENABLE_GOOGLE=false` or google packages aren't installed.
+
+**`tools/video_generator.py` — Bug 5 (GIF filename collision):**
+- Added `ts = int(time.time())` to filename: `{safe_name}_{ts}.gif` / `{safe_name}_{ts}.mp4`.
+- Previously: same prompt (first 30 chars) overwrote the previous GIF silently.
+
+**`tools/gif_generator.py` — Bug 6 (dead code removed):**
+- Deleted `tools/gif_generator.py` — Imagen-based frame-stitching approach, superseded by `video_generator.py` (Veo 3 pipeline). Was already listed in MEMORY.md under "Removed tools — do NOT re-add".
+
+---
+
 ## 2026-03-03 — Startup notification + log cleanup
 
 **`main.py`:**
