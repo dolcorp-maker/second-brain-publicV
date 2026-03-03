@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Second Brain · Status</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:      #060d14;
+      --panel:   #0a1520;
+      --border:  #1a2a3a;
+      --green:   #39ff8a;
+      --cyan:    #00d4c8;
+      --blue:    #4ab0ff;
+      --purple:  #c87dff;
+      --red:     #ff4444;
+      --amber:   #ffb300;
+      --text:    #8ab4c8;
+      --dim:     #3a5a6a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      background: #080f1a;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .header-logo {
+      font-size: 18px;
+      color: var(--cyan);
+      letter-spacing: 3px;
+      text-shadow: 0 0 12px rgba(0,212,200,0.4);
+    }
+
+    .header-badge {
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--dim);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 2px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #clock {
+      font-size: 14px;
+      color: var(--cyan);
+      letter-spacing: 2px;
+    }
+
+    .btn-refresh {
+      background: transparent;
+      border: 1px solid var(--green);
+      color: var(--green);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      padding: 4px 14px;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background 0.15s;
+    }
+    .btn-refresh:hover { background: rgba(57,255,138,0.12); }
+    .btn-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-logout {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--dim);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      padding: 4px 12px;
+      cursor: pointer;
+      border-radius: 2px;
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Main grid ── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      padding: 20px 24px;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 800px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: #0d1e2e;
+    }
+
+    .panel-title {
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--cyan);
+    }
+
+    .panel-badge {
+      font-size: 10px;
+      letter-spacing: 1px;
+    }
+
+    .panel-body { padding: 16px; }
+
+    /* ── Bot status ── */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--dim);
+      flex-shrink: 0;
+    }
+    .status-dot.online  { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .status-dot.offline { background: var(--red);   box-shadow: 0 0 8px var(--red); }
+
+    .status-label {
+      font-size: 13px;
+      letter-spacing: 2px;
+      color: var(--green);
+    }
+    .status-label.offline { color: var(--red); }
+
+    /* ── Counters ── */
+    .counters {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    .counter-card {
+      background: #0d1e2e;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 12px 8px;
+      text-align: center;
+    }
+
+    .counter-val {
+      font-size: 22px;
+      color: var(--cyan);
+      line-height: 1;
+    }
+    .counter-val.gemini { color: var(--blue); }
+    .counter-val.claude { color: var(--purple); }
+
+    .counter-label {
+      font-size: 8px;
+      letter-spacing: 2px;
+      color: var(--dim);
+      margin-top: 4px;
+    }
+
+    /* ── Last update ── */
+    .last-update {
+      margin-top: 14px;
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: var(--dim);
+      text-align: right;
+    }
+
+    /* ── Services ── */
+    .svc-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .svc-row:last-child { border-bottom: none; }
+
+    .svc-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .svc-dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .svc-dot.inactive, .svc-dot.error { background: var(--red); }
+
+    .svc-name { flex: 1; font-size: 11px; color: var(--text); letter-spacing: 1px; }
+
+    .svc-state {
+      font-size: 9px;
+      letter-spacing: 2px;
+    }
+    .svc-state.active   { color: var(--green); }
+    .svc-state.inactive,
+    .svc-state.error    { color: var(--red); }
+
+    /* ── API services ── */
+    .api-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .api-row:last-child { border-bottom: none; }
+
+    .api-name { color: var(--text); letter-spacing: 1px; }
+
+    .api-status { font-size: 9px; letter-spacing: 2px; }
+    .api-status.ok  { color: var(--green); }
+    .api-status.err { color: var(--red); }
+
+    /* ── Weather ── */
+    .weather-wrap { text-align: center; padding: 10px 0; }
+
+    .weather-temp {
+      font-size: 36px;
+      color: var(--cyan);
+      text-shadow: 0 0 12px rgba(0,212,200,0.3);
+      line-height: 1;
+    }
+
+    .weather-desc {
+      font-size: 11px;
+      color: var(--text);
+      letter-spacing: 1px;
+      margin-top: 6px;
+      text-transform: uppercase;
+    }
+
+    .weather-tomorrow {
+      font-size: 10px;
+      color: var(--dim);
+      margin-top: 8px;
+      letter-spacing: 1px;
+    }
+
+    /* ── Match ── */
+    .match-wrap {
+      text-align: center;
+      padding: 6px 0;
+    }
+
+    .match-teams {
+      font-size: 13px;
+      color: var(--text);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .match-vs {
+      color: var(--dim);
+      margin: 0 8px;
+      font-size: 10px;
+    }
+
+    .match-home { color: var(--green); }
+    .match-away { color: var(--blue); }
+
+    .match-date {
+      font-size: 10px;
+      color: var(--amber);
+      letter-spacing: 2px;
+      margin-bottom: 4px;
+    }
+
+    .match-venue {
+      font-size: 9px;
+      color: var(--dim);
+      letter-spacing: 1px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 14px 0;
+    }
+
+    .section-label {
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: var(--dim);
+      margin-bottom: 10px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 9px;
+      color: var(--dim);
+      letter-spacing: 2px;
+    }
+
+    /* ── Wide panel (span 2 cols) ── */
+    .panel-wide {
+      grid-column: span 2;
+    }
+
+    @media (max-width: 800px) {
+      .panel-wide { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="header-left">
+    <div class="header-logo">⚡ SECOND BRAIN</div>
+    <div class="header-badge">EXTERNAL VIEW</div>
+  </div>
+  <div class="header-right">
+    <div id="clock">--:--:--</div>
+    <button class="btn-refresh" id="refresh-btn" onclick="refreshAll()">⟳ REFRESH</button>
+    <a href="/logout" class="btn-logout">LOGOUT</a>
+  </div>
+</header>
+
+<!-- ── Main ── -->
+<main>
+
+  <!-- Bot Activity -->
+  <div class="panel panel-wide">
+    <div class="panel-header">
+      <span class="panel-title">BOT ACTIVITY</span>
+      <span class="panel-badge" id="bot-status-badge" style="color:var(--dim)">● --</span>
+    </div>
+    <div class="panel-body">
+      <div class="status-row">
+        <div class="status-dot" id="status-dot"></div>
+        <div class="status-label" id="status-label">LOADING...</div>
+      </div>
+      <div class="counters">
+        <div class="counter-card">
+          <div class="counter-val" id="total-count">--</div>
+          <div class="counter-label">TOTAL</div>
+        </div>
+        <div class="counter-card">
+          <div class="counter-val gemini" id="gemini-count">--</div>
+          <div class="counter-label">GEMINI</div>
+        </div>
+        <div class="counter-card">
+          <div class="counter-val claude" id="claude-count">--</div>
+          <div class="counter-label">CLAUDE</div>
+        </div>
+      </div>
+      <div class="last-update">LAST UPDATE · <span id="last-update">--</span></div>
+    </div>
+  </div>
+
+  <!-- Services -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">SERVICES</span>
+    </div>
+    <div class="panel-body">
+      <div class="section-label">SYSTEM SERVICES</div>
+      <div id="svc-list">
+        <div class="svc-row">
+          <div class="svc-dot inactive"></div>
+          <span class="svc-name">Loading...</span>
+          <span class="svc-state inactive">--</span>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <div class="section-label">API SERVICES</div>
+      <div id="api-list">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Weather -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">WEATHER · TEL AVIV</span>
+    </div>
+    <div class="panel-body">
+      <div class="weather-wrap">
+        <div class="weather-temp" id="weather-temp">--°</div>
+        <div class="weather-desc" id="weather-desc">Loading...</div>
+        <div class="weather-tomorrow" id="weather-tomorrow"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Next Match -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">MACCABI HAIFA · NEXT FIXTURE</span>
+    </div>
+    <div class="panel-body">
+      <div class="match-wrap">
+        <div class="match-date" id="match-date">--</div>
+        <div class="match-teams">
+          <span class="match-home" id="match-home">--</span>
+          <span class="match-vs">VS</span>
+          <span class="match-away" id="match-away">--</span>
+        </div>
+        <div class="match-venue" id="match-venue"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Footer ── -->
+<footer id="footer">
+  SECOND BRAIN BOT · EXTERNAL VIEW · <span id="session-info">-- / 4 SESSIONS</span>
+</footer>
+
+<script>
+// ── Clock ──────────────────────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toTimeString().slice(0, 8);
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Fetch status + weather + match ────────────────────────────────────────────
+async function fetchStatus() {
+  try {
+    const r = await fetch('/api/ext/status');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    // Bot online/offline
+    const online = d.status === 'running';
+    const dot   = document.getElementById('status-dot');
+    const label = document.getElementById('status-label');
+    const badge = document.getElementById('bot-status-badge');
+    dot.className   = 'status-dot ' + (online ? 'online' : 'offline');
+    label.className = 'status-label' + (online ? '' : ' offline');
+    label.textContent = online ? 'ONLINE' : 'OFFLINE';
+    badge.textContent = online ? '● ONLINE' : '● OFFLINE';
+    badge.style.color = online ? 'var(--green)' : 'var(--red)';
+
+    // Counters
+    document.getElementById('total-count').textContent  = d.total_requests ?? '--';
+    document.getElementById('gemini-count').textContent = d.gemini_count   ?? '--';
+    document.getElementById('claude-count').textContent = d.claude_count   ?? '--';
+    document.getElementById('last-update').textContent  = d.last_update    ?? '--';
+
+    // API services
+    const apiStatus = d.api_status || {};
+    const apis = [
+      ['Telegram',     apiStatus.telegram     !== false],
+      ['Gemini',       apiStatus.gemini       !== false],
+      ['Claude',       apiStatus.claude       !== false],
+      ['OpenWeather',  apiStatus.openweather  !== false],
+      ['Brave Search', apiStatus.brave        !== false],
+    ];
+    document.getElementById('api-list').innerHTML = apis.map(([name, ok]) => `
+      <div class="api-row">
+        <span class="api-name">${name}</span>
+        <span class="api-status ${ok ? 'ok' : 'err'}">${ok ? 'NOMINAL' : 'ERROR'}</span>
+      </div>
+    `).join('');
+
+    // Weather
+    const w = d.weather || {};
+    if (w.current) {
+      document.getElementById('weather-temp').textContent = w.current.temperature + '°C';
+      document.getElementById('weather-desc').textContent = (w.current.description || '').toUpperCase();
+      if (w.tomorrow) {
+        document.getElementById('weather-tomorrow').textContent =
+          `Tomorrow: ${w.tomorrow.temperature}°C · ${(w.tomorrow.description || '').toUpperCase()}`;
+      }
+    }
+
+    // Match
+    const m = d.next_match || {};
+    if (m.home_team) {
+      document.getElementById('match-date').textContent  = `${m.date || ''} ${m.time || ''}`.trim();
+      document.getElementById('match-home').textContent  = m.home_team || '--';
+      document.getElementById('match-away').textContent  = m.away_team || '--';
+      document.getElementById('match-venue').textContent = m.venue     || '';
+    }
+
+  } catch(e) {}
+}
+
+// ── Fetch system services ─────────────────────────────────────────────────────
+async function fetchServices() {
+  try {
+    const r = await fetch('/api/ext/services');
+    if (!r.ok) return;
+    const d = await r.json();
+    const services = d.services || [];
+    document.getElementById('svc-list').innerHTML = services.map(svc => {
+      const state = svc.active ? 'active' : (svc.state === 'failed' ? 'error' : 'inactive');
+      return `
+        <div class="svc-row">
+          <div class="svc-dot ${state}"></div>
+          <span class="svc-name">${svc.display}</span>
+          <span class="svc-state ${state}">${state.toUpperCase()}</span>
+        </div>
+      `;
+    }).join('');
+  } catch(e) {}
+}
+
+// ── Fetch session count ───────────────────────────────────────────────────────
+async function fetchSessions() {
+  try {
+    const r = await fetch('/api/ext/sessions');
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('session-info').textContent =
+      `${d.active} / ${d.max} SESSIONS ACTIVE`;
+  } catch(e) {}
+}
+
+// ── Refresh all ───────────────────────────────────────────────────────────────
+function refreshAll() {
+  const btn = document.getElementById('refresh-btn');
+  btn.textContent = '⟳ ...';
+  btn.disabled = true;
+  Promise.all([fetchStatus(), fetchServices(), fetchSessions()])
+    .finally(() => {
+      btn.textContent = '⟳ REFRESH';
+      btn.disabled = false;
+    });
+}
+
+// ── Initial load + auto-refresh every 60s ─────────────────────────────────────
+// External dashboard is manual-first. Auto-refresh is very slow (60s)
+// to minimise server load. Use the button for on-demand updates.
+refreshAll();
+setInterval(fetchStatus,   60000);
+setInterval(fetchServices, 120000);
+setInterval(fetchSessions, 60000);
+</script>
+</body>
+</html>

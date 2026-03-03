@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Second Brain Bot — System Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #060a14;
+    color: #c8d8f0;
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    padding: 40px 20px 60px;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,200,0.015) 2px, rgba(0,212,200,0.015) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  h1 {
+    font-family: 'Orbitron', monospace;
+    font-size: 26px;
+    font-weight: 900;
+    color: #00d4c8;
+    text-align: center;
+    letter-spacing: 6px;
+    text-shadow: 0 0 30px rgba(0,212,200,0.4);
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    text-align: center;
+    font-size: 10px;
+    color: #5a6e90;
+    letter-spacing: 3px;
+    margin-bottom: 44px;
+  }
+
+  .diagram {
+    max-width: 1140px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .row {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 14px;
+    width: 100%;
+  }
+
+  .connector {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 32px;
+    width: 100%;
+    position: relative;
+  }
+  .connector::before {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 50%; width: 2px;
+    background: linear-gradient(to bottom, #1a2a4a, #00d4c8, #1a2a4a);
+  }
+  .connector-arrow {
+    width: 9px; height: 9px;
+    border-right: 2px solid #00d4c8;
+    border-bottom: 2px solid #00d4c8;
+    transform: rotate(45deg);
+    position: relative; z-index: 1;
+    background: #060a14;
+  }
+
+  .section-label {
+    font-size: 9px;
+    color: #3a4a6a;
+    letter-spacing: 3px;
+    text-align: center;
+    margin-bottom: 10px;
+    width: 100%;
+  }
+
+  /* ── Node base ── */
+  .node {
+    border-radius: 6px;
+    padding: 13px 16px;
+    position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .node:hover { transform: translateY(-2px); }
+
+  .node-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  .node-desc { font-size: 10px; color: #8a9ab8; line-height: 1.5; }
+  .node-icon { font-size: 18px; margin-bottom: 5px; display: block; }
+
+  .node-entry {
+    background: #0a1828; border: 2px solid #00d4c8;
+    box-shadow: 0 0 20px rgba(0,212,200,0.12);
+    width: 270px; text-align: center;
+  }
+  .node-entry .node-title { color: #00d4c8; font-size: 13px; }
+
+  .node-router {
+    background: #0f1a2e; border: 2px solid #4ab0ff;
+    box-shadow: 0 0 16px rgba(74,176,255,0.12);
+    width: 250px; text-align: center;
+  }
+  .node-router .node-title { color: #4ab0ff; }
+
+  .node-agent {
+    background: #0a1828; border: 2px solid #00d4c8;
+    box-shadow: 0 0 16px rgba(0,212,200,0.12);
+    width: 280px; text-align: center;
+  }
+  .node-agent .node-title { color: #00d4c8; }
+
+  .node-gemini {
+    background: #0e1c2e; border: 2px solid #4ab0ff;
+    width: 190px; text-align: center;
+  }
+  .node-gemini .node-title { color: #4ab0ff; }
+
+  .node-claude {
+    background: #150e2e; border: 2px solid #c87dff;
+    width: 190px; text-align: center;
+  }
+  .node-claude .node-title { color: #c87dff; }
+
+  .node-tool {
+    background: #0a1820; border: 1px solid #1a3a4a;
+    width: 148px; text-align: center; padding: 11px 9px;
+  }
+  .node-tool:hover { border-color: #00d4c8; box-shadow: 0 0 10px rgba(0,212,200,0.12); }
+  .node-tool .node-title { color: #00d4c8; font-size: 8px; }
+  .node-tool .node-icon { font-size: 15px; margin-bottom: 3px; }
+
+  .node-google {
+    background: #0a1820; border: 1px solid #2a3a1a;
+    width: 148px; text-align: center; padding: 11px 9px;
+  }
+  .node-google:hover { border-color: #39ff8a; box-shadow: 0 0 10px rgba(57,255,138,0.12); }
+  .node-google .node-title { color: #39ff8a; font-size: 8px; }
+  .node-google .node-icon { font-size: 15px; margin-bottom: 3px; }
+
+  .node-storage {
+    background: #0a1014; border: 1px solid #1a2430;
+    width: 162px; text-align: center; padding: 11px 9px;
+  }
+  .node-storage .node-title { color: #5a7a90; font-size: 8px; }
+  .node-storage .node-icon { font-size: 15px; margin-bottom: 3px; }
+
+  .node-infra {
+    background: #14100a; border: 1px solid #2a2010;
+    width: 185px; text-align: center; padding: 11px 9px;
+  }
+  .node-infra:hover { border-color: #ffb300; box-shadow: 0 0 10px rgba(255,179,0,0.12); }
+  .node-infra .node-title { color: #ffb300; font-size: 8px; }
+  .node-infra .node-icon { font-size: 15px; margin-bottom: 3px; }
+
+  .tools-grid, .infra-grid {
+    display: flex; flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px; width: 100%; max-width: 1100px;
+  }
+
+  .badge {
+    display: inline-block; font-size: 8px;
+    padding: 2px 6px; border-radius: 8px;
+    margin-top: 5px; letter-spacing: 1px;
+  }
+  .badge-free   { background: rgba(57,255,138,0.1);  color: #39ff8a; border: 1px solid rgba(57,255,138,0.25); }
+  .badge-paid   { background: rgba(200,125,255,0.1); color: #c87dff; border: 1px solid rgba(200,125,255,0.25); }
+  .badge-pi     { background: rgba(255,179,0,0.1);   color: #ffb300; border: 1px solid rgba(255,179,0,0.25); }
+  .badge-google { background: rgba(57,255,138,0.08); color: #39ff8a; border: 1px solid rgba(57,255,138,0.2); }
+
+  .flow-svg { width: 100%; height: 58px; max-width: 860px; }
+
+  /* ── API KEY + USAGE PANEL ── */
+  .api-panel {
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 8px;
+    background: #08101e;
+    border: 1px solid #1a2a4a;
+    border-radius: 8px;
+    padding: 20px 24px 24px;
+  }
+
+  .api-panel-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: #00d4c8;
+    letter-spacing: 3px;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .api-panel-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, #1a2a4a, transparent);
+  }
+
+  .api-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+
+  .api-card {
+    background: #0a1420;
+    border: 1px solid #1a2a3a;
+    border-radius: 6px;
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+
+  .api-card:hover { border-color: #2a3a5a; }
+
+  .api-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .api-card.free::before   { background: #39ff8a; }
+  .api-card.paid::before   { background: #c87dff; }
+  .api-card.google::before { background: #4ab0ff; }
+  .api-card.usage::before  { background: #ffb300; }
+
+  .api-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .api-service-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+  }
+
+  .api-card.free   .api-service-name { color: #39ff8a; }
+  .api-card.paid   .api-service-name { color: #c87dff; }
+  .api-card.google .api-service-name { color: #4ab0ff; }
+  .api-card.usage  .api-service-name { color: #ffb300; }
+
+  .plan-pill {
+    font-size: 8px;
+    padding: 2px 7px;
+    border-radius: 8px;
+    letter-spacing: 1px;
+  }
+  .plan-free   { background: rgba(57,255,138,0.1);  color: #39ff8a; }
+  .plan-paid   { background: rgba(200,125,255,0.1); color: #c87dff; }
+  .plan-google { background: rgba(74,176,255,0.1);  color: #4ab0ff; }
+
+  .api-key-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .api-key-label { font-size: 9px; color: #5a6e90; letter-spacing: 1px; flex-shrink: 0; }
+
+  .api-key-input {
+    flex: 1;
+    background: #060a14;
+    border: 1px solid #1a2a3a;
+    border-radius: 3px;
+    padding: 4px 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: #8a9ab8;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .api-key-input:focus { border-color: #00d4c8; color: #c8d8f0; }
+  .api-key-input::placeholder { color: #3a4a6a; }
+
+  .key-toggle {
+    background: none;
+    border: 1px solid #1a2a3a;
+    border-radius: 3px;
+    padding: 4px 7px;
+    color: #5a6e90;
+    font-size: 9px;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    transition: border-color 0.2s, color 0.2s;
+    flex-shrink: 0;
+  }
+  .key-toggle:hover { border-color: #00d4c8; color: #00d4c8; }
+
+  /* ── Usage meter ── */
+  .usage-section { margin-top: 10px; }
+
+  .usage-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 5px;
+  }
+
+  .usage-label { font-size: 9px; color: #5a6e90; letter-spacing: 1px; }
+
+  .usage-numbers {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    color: #c8d8f0;
+  }
+
+  .usage-limit { font-size: 9px; color: #5a6e90; }
+
+  .usage-bar-track {
+    height: 5px;
+    background: #0e1828;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid #1a2a3a;
+    margin-bottom: 4px;
+  }
+
+  .usage-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 1.2s ease;
+  }
+
+  .fill-green  { background: #39ff8a; box-shadow: 0 0 6px rgba(57,255,138,0.4); }
+  .fill-amber  { background: #ffb300; box-shadow: 0 0 6px rgba(255,179,0,0.4); }
+  .fill-red    { background: #ff4444; box-shadow: 0 0 6px rgba(255,68,68,0.4); }
+  .fill-purple { background: #c87dff; box-shadow: 0 0 6px rgba(200,125,255,0.4); }
+  .fill-blue   { background: #4ab0ff; box-shadow: 0 0 6px rgba(74,176,255,0.4); }
+
+  .usage-meta {
+    font-size: 9px;
+    color: #3a4a6a;
+    margin-top: 2px;
+  }
+
+  .fetch-btn {
+    width: 100%;
+    margin-top: 10px;
+    background: none;
+    border: 1px solid #1a2a3a;
+    border-radius: 3px;
+    padding: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: #5a6e90;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .fetch-btn:hover { border-color: #00d4c8; color: #00d4c8; }
+  .fetch-btn.loading { color: #3a4a6a; border-color: #1a2a3a; cursor: wait; }
+
+  .status-dot-sm {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 4px;
+  }
+  .dot-ok  { background: #39ff8a; box-shadow: 0 0 4px #39ff8a; }
+  .dot-err { background: #ff4444; }
+  .dot-unk { background: #3a4a6a; }
+
+  .cost-estimate {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    color: #c87dff;
+    text-shadow: 0 0 10px rgba(200,125,255,0.3);
+    margin: 4px 0;
+  }
+
+  .cost-note { font-size: 9px; color: #5a6e90; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex; gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 36px;
+    padding-top: 18px;
+    border-top: 1px solid #1a2a4a;
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 10px; color: #5a6e90; }
+  .legend-dot  { width: 9px; height: 9px; border-radius: 50%; }
+
+  /* ── Cost analytics panels ───────────────────────────────────────────────── */
+  .analytics-section {
+    padding: 12px 16px 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .analytics-panel {
+    background: #0a1020;
+    border: 1px solid #1a2a4a;
+    border-radius: 6px;
+    padding: 12px;
+  }
+
+  .analytics-title {
+    font-size: 9px;
+    color: #5a6e90;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1a2a4a;
+  }
+
+  /* Token breakdown */
+  .token-total {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    color: #c87dff;
+    text-shadow: 0 0 10px rgba(200,125,255,0.3);
+    margin-bottom: 4px;
+  }
+
+  .token-sub { font-size: 9px; color: #5a6e90; margin-bottom: 10px; }
+
+  .token-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .token-block {
+    background: #0e1830;
+    border: 1px solid #1a2a4a;
+    border-radius: 4px;
+    padding: 8px;
+  }
+
+  .token-block-label { font-size: 8px; color: #5a6e90; letter-spacing: 1px; margin-bottom: 3px; }
+  .token-block-value { font-size: 14px; color: #c8d8f0; }
+  .token-block-cost  { font-size: 9px; color: #5a6e90; margin-top: 2px; }
+
+  .token-block.input  { border-left: 2px solid #4ab0ff; }
+  .token-block.output { border-left: 2px solid #c87dff; }
+
+  /* Daily trend chart */
+  .trend-chart-wrap {
+    position: relative;
+    height: 80px;
+    margin-bottom: 8px;
+  }
+
+  #trend-canvas {
+    width: 100%;
+    height: 100%;
+  }
+
+  .trend-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8px;
+    color: #3a4a6a;
+    margin-top: 4px;
+  }
+
+  .trend-total {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    color: #39ff8a;
+    text-shadow: 0 0 8px rgba(57,255,138,0.3);
+    margin-bottom: 2px;
+  }
+
+  .trend-sub { font-size: 9px; color: #5a6e90; }
+
+  /* Per-tool breakdown */
+  .tool-cost-list { display: flex; flex-direction: column; gap: 5px; }
+
+  .tool-cost-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    background: #0e1830;
+    border: 1px solid #1a2a4a;
+    border-radius: 3px;
+    padding: 5px 8px;
+  }
+
+  .tool-cost-name  { font-size: 10px; color: #c8d8f0; }
+  .tool-cost-calls { font-size: 9px; color: #5a6e90; }
+  .tool-cost-price {
+    font-size: 10px;
+    color: #c87dff;
+    white-space: nowrap;
+    font-family: 'Orbitron', monospace;
+  }
+
+  .tool-cost-bar-wrap { grid-column: 1 / -1; }
+  .tool-cost-bar-track { background: #0a1020; border-radius: 2px; height: 3px; }
+  .tool-cost-bar-fill  { height: 3px; border-radius: 2px; background: #c87dff; transition: width 0.5s; }
+
+  .no-data-msg { font-size: 10px; color: #3a4a6a; text-align: center; padding: 16px 0; }
+
+
+  .page-switcher {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    gap: 6px;
+  }
+
+  .page-btn {
+    background: #0a1020;
+    border: 1px solid #1a2a4a;
+    border-radius: 4px;
+    color: #5a6e90;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .page-btn:hover {
+    border-color: #39ff8a;
+    color: #39ff8a;
+    box-shadow: 0 0 8px rgba(57,255,138,0.15);
+  }
+
+  .page-btn.active {
+    border-color: #39ff8a;
+    color: #39ff8a;
+    background: rgba(57,255,138,0.05);
+  }
+
+</style>
+</head>
+<body>
+
+  <div class="page-switcher">
+    <a class="page-btn" href="/">🖥️ DASHBOARD</a>
+    <a class="page-btn active" href="/architecture">⚙️ ARCHITECTURE</a>
+  </div>
+<div class="diagram">
+
+  <h1>SECOND BRAIN BOT</h1>
+  <div class="subtitle">SYSTEM ARCHITECTURE · API USAGE · RASPBERRY PI 3B+</div>
+
+  <!-- INPUT -->
+  <div class="section-label">INPUT LAYER</div>
+  <div class="row">
+    <div class="node node-entry">
+      <span class="node-icon">📱</span>
+      <div class="node-title">TELEGRAM</div>
+      <div class="node-desc">Text · Voice notes<br>User: dolevmilunsky</div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="connector-arrow"></div></div>
+
+  <!-- GATEWAY -->
+  <div class="section-label">GATEWAY</div>
+  <div class="row">
+    <div class="node node-router" style="width:290px;">
+      <span class="node-icon">⚙️</span>
+      <div class="node-title">main.py</div>
+      <div class="node-desc">Message handler · Voice transcription<br>Conversation history · Auth guard</div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="connector-arrow"></div></div>
+
+  <!-- ROUTER + VOICE -->
+  <div class="row" style="gap:36px;">
+    <div class="node node-tool" style="width:210px; border-color:#3a4a6a;">
+      <span class="node-icon">🎙️</span>
+      <div class="node-title" style="color:#8a9ab8;">VOICE TRANSCRIPTION</div>
+      <div class="node-desc">faster-whisper (Mac)<br>OpenAI Whisper API (Pi)</div>
+    </div>
+    <div class="node node-router" style="width:230px;">
+      <span class="node-icon">🔀</span>
+      <div class="node-title">router.py</div>
+      <div class="node-desc">Keyword classifier<br>Simple → Gemini · Complex → Claude</div>
+    </div>
+  </div>
+
+  <!-- FAN OUT SVG -->
+  <svg class="flow-svg" viewBox="0 0 860 58">
+    <defs>
+      <marker id="ab" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+        <path d="M0,0 L7,3.5 L0,7 Z" fill="#4ab0ff"/>
+      </marker>
+      <marker id="ap" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+        <path d="M0,0 L7,3.5 L0,7 Z" fill="#c87dff"/>
+      </marker>
+    </defs>
+    <line x1="430" y1="0" x2="430" y2="18" stroke="#1a2a4a" stroke-width="2"/>
+    <line x1="430" y1="18" x2="220" y2="18" stroke="#4ab0ff" stroke-width="2"/>
+    <line x1="220" y1="18" x2="220" y2="50" stroke="#4ab0ff" stroke-width="2" marker-end="url(#ab)"/>
+    <text x="270" y="13" fill="#4ab0ff" font-size="9" font-family="Share Tech Mono" letter-spacing="2">SIMPLE / FREE</text>
+    <line x1="430" y1="18" x2="640" y2="18" stroke="#c87dff" stroke-width="2"/>
+    <line x1="640" y1="18" x2="640" y2="50" stroke="#c87dff" stroke-width="2" marker-end="url(#ap)"/>
+    <text x="460" y="13" fill="#c87dff" font-size="9" font-family="Share Tech Mono" letter-spacing="2">COMPLEX / PAID</text>
+  </svg>
+
+  <!-- MODELS -->
+  <div class="section-label">AI MODELS</div>
+  <div class="row" style="gap:200px; align-items:flex-start;">
+    <div class="node node-gemini">
+      <span class="node-icon">⚡</span>
+      <div class="node-title">GEMINI 2.5</div>
+      <div class="node-desc">Flash Lite<br>google-genai SDK</div>
+      <span class="badge badge-free">FREE TIER</span>
+    </div>
+    <div class="node node-claude">
+      <span class="node-icon">🧠</span>
+      <div class="node-title">CLAUDE SONNET</div>
+      <div class="node-desc">claude-sonnet-4-6<br>anthropic SDK</div>
+      <span class="badge badge-paid">PAID · RARE</span>
+    </div>
+  </div>
+
+  <div class="connector"><div class="connector-arrow"></div></div>
+
+  <!-- AGENT -->
+  <div class="row">
+    <div class="node node-agent">
+      <span class="node-icon">🤖</span>
+      <div class="node-title">agent.py</div>
+      <div class="node-desc">Agentic tool-calling loop · run_tool() dispatcher<br>Both models share identical tool set</div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="connector-arrow"></div></div>
+
+  <!-- TOOLS -->
+  <div class="section-label">TOOLS LAYER</div>
+  <div class="tools-grid">
+    <div class="node node-tool"><span class="node-icon">💭</span><div class="node-title">THOUGHTS</div><div class="node-desc">Save · List · Search</div></div>
+    <div class="node node-tool"><span class="node-icon">✅</span><div class="node-title">TASKS</div><div class="node-desc">Add · List · Update</div></div>
+    <div class="node node-tool"><span class="node-icon">🗒️</span><div class="node-title">NOTES VAULT</div><div class="node-desc">passwords · keys · api<br>random · headlines</div></div>
+    <div class="node node-tool"><span class="node-icon">🌤️</span><div class="node-title">WEATHER</div><div class="node-desc">OpenWeatherMap<br>Today + Tomorrow</div></div>
+    <div class="node node-tool"><span class="node-icon">🔍</span><div class="node-title">WEB SEARCH</div><div class="node-desc">Brave Search API<br>Live results</div></div>
+    <div class="node node-tool"><span class="node-icon">⚽</span><div class="node-title">MACCABI HAIFA</div><div class="node-desc">Fixtures · Results<br>Live scraper</div></div>
+    <div class="node node-tool"><span class="node-icon">⏰</span><div class="node-title">REMINDERS</div><div class="node-desc">One-time · Interval<br>Proactive push</div></div>
+    <div class="node node-tool"><span class="node-icon">🔊</span><div class="node-title">VOICE REPLY</div><div class="node-desc">Google TTS<br>"speak" trigger</div></div>
+    <div class="node node-tool"><span class="node-icon">🎬</span><div class="node-title">VIDEO GIF</div><div class="node-desc">Google Veo 3<br>AI animation</div></div>
+    <div class="node node-tool"><span class="node-icon">🗺️</span><div class="node-title">NAVIGATE MAPS</div><div class="node-desc">Google Maps deep link<br>Claude builds full address</div></div>
+    <div class="node node-google"><span class="node-icon">📆</span><div class="node-title">GOOGLE CALENDAR</div><div class="node-desc">Read · Create events</div></div>
+    <div class="node node-google"><span class="node-icon">📧</span><div class="node-title">GMAIL</div><div class="node-desc">Unread inbox</div></div>
+    <div class="node node-google"><span class="node-icon">☑️</span><div class="node-title">GOOGLE TASKS</div><div class="node-desc">Read · Add tasks</div></div>
+  </div>
+
+  <div class="connector"><div class="connector-arrow"></div></div>
+
+  <!-- STORAGE -->
+  <div class="section-label">PERSISTENCE LAYER</div>
+  <div class="tools-grid">
+    <div class="node node-storage"><span class="node-icon">💾</span><div class="node-title" style="color:#5a7a90;">thoughts.json</div><div class="node-desc">Local brain dump</div></div>
+    <div class="node node-storage"><span class="node-icon">💾</span><div class="node-title" style="color:#5a7a90;">tasks.json</div><div class="node-desc">Local tasks</div></div>
+    <div class="node node-storage"><span class="node-icon">💾</span><div class="node-title" style="color:#5a7a90;">notes.json</div><div class="node-desc">Notes vault</div></div>
+    <div class="node node-storage"><span class="node-icon">💾</span><div class="node-title" style="color:#5a7a90;">reminders.json</div><div class="node-desc">Scheduled reminders</div></div>
+    <div class="node node-storage"><span class="node-icon">🎬</span><div class="node-title" style="color:#5a7a90;">data/videos/</div><div class="node-desc">Generated GIFs</div></div>
+    <div class="node node-storage"><span class="node-icon">📊</span><div class="node-title" style="color:#5a7a90;">metrics.json</div><div class="node-desc">Dashboard feed</div></div>
+    <div class="node node-google" style="width:162px;"><span class="node-icon">☁️</span><div class="node-title">GOOGLE OAUTH</div><div class="node-desc">token.json</div></div>
+  </div>
+
+  <div class="connector"><div class="connector-arrow"></div></div>
+
+  <!-- INFRA -->
+  <div class="section-label">INFRASTRUCTURE · MACBOOK PRO 2017 · UBUNTU 22.04</div>
+  <div class="infra-grid">
+    <div class="node node-infra"><span class="node-icon">🤖</span><div class="node-title">secondbrain.service</div><div class="node-desc">Bot · systemd<br>auto-restart</div><span class="badge badge-pi">SYSTEMD</span></div>
+    <div class="node node-infra"><span class="node-icon">🖥️</span><div class="node-title">secondbrain-dashboard</div><div class="node-desc">Flask :8080<br>web_dashboard.py</div><span class="badge badge-pi">SYSTEMD</span></div>
+    <div class="node node-infra"><span class="node-icon">⏰</span><div class="node-title">secondbrain-scheduler</div><div class="node-desc">Reminder engine<br>scheduler.py · 60s tick</div><span class="badge badge-pi">SYSTEMD</span></div>
+    <div class="node node-infra"><span class="node-icon">📺</span><div class="node-title">KIOSK DISPLAY</div><div class="node-desc">Chromium fullscreen<br>autologin tty1</div><span class="badge badge-pi">AUTOSTART</span></div>
+    <div class="node node-infra"><span class="node-icon">🔑</span><div class="node-title">SSH ACCESS</div><div class="node-desc">192.168.1.204<br>Remote management</div><span class="badge badge-pi">NETWORK</span></div>
+    <div class="node node-infra"><span class="node-icon">🔴</span><div class="node-title">KILL SWITCH</div><div class="node-desc">/shutdown · /restart<br>Telegram commands</div><span class="badge badge-pi">REMOTE</span></div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- API KEYS & USAGE PANEL -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div style="height:40px; width:2px; background: linear-gradient(to bottom, #1a2a4a, #ffb300); margin: 0 auto;"></div>
+
+  <div class="api-panel">
+    <div class="api-panel-title">🔑 API KEYS &amp; LIVE USAGE</div>
+
+    <div class="api-grid">
+
+      <!-- ── Brave Search ── -->
+      <div class="api-card usage" id="card-brave">
+        <div class="api-card-header">
+          <span class="api-service-name">🔍 BRAVE SEARCH</span>
+          <span class="plan-pill plan-paid">$5 CREDITS/MO</span>
+        </div>
+        <div class="api-key-row">
+          <span class="api-key-label">KEY</span>
+          <input class="api-key-input" id="key-brave" type="password" placeholder="BSA..." autocomplete="off"/>
+          <button class="key-toggle" onclick="toggleKey('brave')">SHOW</button>
+        </div>
+        <div class="usage-section">
+          <div class="usage-header">
+            <span class="usage-label">QUERIES THIS MONTH</span>
+            <span class="usage-numbers"><span id="brave-used">--</span> <span class="usage-limit">/ 1000</span></span>
+          </div>
+          <div class="usage-bar-track">
+            <div class="usage-bar-fill fill-amber" id="brave-bar" style="width:0%"></div>
+          </div>
+          <div class="usage-meta" id="brave-meta">Enter key and click FETCH to load usage</div>
+        </div>
+        <button class="fetch-btn" onclick="fetchBrave()">⟳ FETCH USAGE</button>
+      </div>
+
+      <!-- ── Anthropic Claude ── -->
+      <div class="api-card paid" id="card-claude">
+        <div class="api-card-header">
+          <span class="api-service-name">🧠 ANTHROPIC</span>
+          <span class="plan-pill plan-paid">PAY PER TOKEN</span>
+        </div>
+        <div class="api-key-row">
+          <span class="api-key-label">KEY</span>
+          <input class="api-key-input" id="key-claude" type="password" placeholder="sk-ant-..." autocomplete="off"/>
+          <button class="key-toggle" onclick="toggleKey('claude')">SHOW</button>
+        </div>
+        <div class="usage-section">
+          <div class="usage-label" style="margin-bottom:4px;">SESSION COST (REAL)</div>
+          <div class="cost-estimate" id="claude-cost">$-.----</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;">
+            <div>
+              <div class="usage-label">INPUT TOKENS</div>
+              <div class="usage-numbers" id="claude-input-tokens">--</div>
+              <div class="cost-note">$3 / 1M</div>
+            </div>
+            <div>
+              <div class="usage-label">OUTPUT TOKENS</div>
+              <div class="usage-numbers" id="claude-output-tokens">--</div>
+              <div class="cost-note">$15 / 1M</div>
+            </div>
+          </div>
+          <div class="usage-header" style="margin-top:10px;">
+            <span class="usage-label">CLAUDE CALLS</span>
+            <span class="usage-numbers" id="claude-calls">--</span>
+          </div>
+          <div class="usage-bar-track">
+            <div class="usage-bar-fill fill-purple" id="claude-bar" style="width:0%"></div>
+          </div>
+          <div class="usage-meta" id="claude-meta">Enter key and fetch for real token counts</div>
+        </div>
+        <button class="fetch-btn" onclick="fetchClaude()">⟳ FETCH REAL USAGE</button>
+      </div>
+
+      <!-- ── OpenAI Whisper ── -->
+      <div class="api-card paid" id="card-whisper">
+        <div class="api-card-header">
+          <span class="api-service-name">🎙️ OPENAI WHISPER</span>
+          <span class="plan-pill plan-paid">$0.006/MIN</span>
+        </div>
+        <div class="api-key-row">
+          <span class="api-key-label">KEY</span>
+          <input class="api-key-input" id="key-whisper" type="password" placeholder="sk-..." autocomplete="off"/>
+          <button class="key-toggle" onclick="toggleKey('whisper')">SHOW</button>
+        </div>
+        <div class="usage-section">
+          <div class="usage-label" style="margin-bottom:6px;">COST ESTIMATE (SESSION)</div>
+          <div class="cost-estimate" id="whisper-cost">$0.000</div>
+          <div class="cost-note">Based on avg 10s per voice note<br>$0.001 per voice message</div>
+          <div class="usage-header" style="margin-top:10px;">
+            <span class="usage-label">VOICE MESSAGES (SESSION)</span>
+            <span class="usage-numbers" id="whisper-count">--</span>
+          </div>
+          <div class="usage-bar-track">
+            <div class="usage-bar-fill fill-purple" id="whisper-bar" style="width:0%"></div>
+          </div>
+          <div class="usage-meta">OpenAI has no public usage API — estimated from local counters</div>
+        </div>
+        <button class="fetch-btn" onclick="fetchWhisper()">⟳ ESTIMATE FROM DASHBOARD</button>
+      </div>
+
+      <!-- ── Google APIs ── -->
+      <div class="api-card google" id="card-google">
+        <div class="api-card-header">
+          <span class="api-service-name">☁️ GOOGLE APIs</span>
+          <span class="plan-pill plan-google">FREE QUOTA</span>
+        </div>
+        <div class="api-key-row">
+          <span class="api-key-label">PROJECT</span>
+          <input class="api-key-input" id="key-google" type="text" placeholder="second-brain-bot" autocomplete="off"/>
+        </div>
+        <div class="usage-section">
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div>
+              <div class="usage-header">
+                <span class="usage-label"><span class="status-dot-sm dot-unk" id="dot-gcal"></span>CALENDAR API</span>
+                <span class="usage-numbers"><span id="gcal-used">--</span><span class="usage-limit"> / 1M/day</span></span>
+              </div>
+              <div class="usage-bar-track">
+                <div class="usage-bar-fill fill-blue" id="gcal-bar" style="width:0%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="usage-header">
+                <span class="usage-label"><span class="status-dot-sm dot-unk" id="dot-gmail"></span>GMAIL API</span>
+                <span class="usage-numbers"><span id="gmail-used">--</span><span class="usage-limit"> / 1B/day</span></span>
+              </div>
+              <div class="usage-bar-track">
+                <div class="usage-bar-fill fill-blue" id="gmail-bar" style="width:0%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="usage-header">
+                <span class="usage-label"><span class="status-dot-sm dot-unk" id="dot-tasks"></span>TASKS API</span>
+                <span class="usage-numbers"><span id="tasks-used">--</span><span class="usage-limit"> / 50k/day</span></span>
+              </div>
+              <div class="usage-bar-track">
+                <div class="usage-bar-fill fill-blue" id="tasks-bar" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="usage-meta" style="margin-top:8px;" id="google-meta">Google Cloud quotas — usage from dashboard counters</div>
+        </div>
+        <button class="fetch-btn" onclick="fetchGoogle()">⟳ FETCH FROM DASHBOARD</button>
+      </div>
+
+      <!-- ── OpenWeatherMap ── -->
+      <div class="api-card free" id="card-weather">
+        <div class="api-card-header">
+          <span class="api-service-name">🌤️ OPENWEATHERMAP</span>
+          <span class="plan-pill plan-free">FREE · 1K/DAY</span>
+        </div>
+        <div class="api-key-row">
+          <span class="api-key-label">KEY</span>
+          <input class="api-key-input" id="key-weather" type="password" placeholder="..." autocomplete="off"/>
+          <button class="key-toggle" onclick="toggleKey('weather')">SHOW</button>
+        </div>
+        <div class="usage-section">
+          <div class="usage-header">
+            <span class="usage-label">STATUS</span>
+            <span id="weather-status" style="font-size:9px; color:#3a4a6a;"><span class="status-dot-sm dot-unk"></span>UNKNOWN</span>
+          </div>
+          <div class="cost-note" style="margin-top:6px;">Free tier: 1,000 calls/day<br>No usage API on free plan<br>Enter key and test to verify</div>
+        </div>
+        <button class="fetch-btn" onclick="fetchWeather()">⟳ TEST KEY</button>
+      </div>
+
+      <!-- ── Gemini ── -->
+      <div class="api-card free" id="card-gemini">
+        <div class="api-card-header">
+          <span class="api-service-name">⚡ GEMINI</span>
+          <span class="plan-pill plan-free">FREE TIER</span>
+        </div>
+        <div class="api-key-row">
+          <span class="api-key-label">KEY</span>
+          <input class="api-key-input" id="key-gemini" type="password" placeholder="AIza..." autocomplete="off"/>
+          <button class="key-toggle" onclick="toggleKey('gemini')">SHOW</button>
+        </div>
+        <div class="usage-section">
+          <div class="usage-label" style="margin-bottom:6px;">GEMINI CALLS (SESSION)</div>
+          <div class="usage-numbers" id="gemini-session" style="font-family:'Orbitron',monospace; font-size:20px; color:#4ab0ff;">--</div>
+          <div class="usage-bar-track" style="margin-top:8px;">
+            <div class="usage-bar-fill fill-blue" id="gemini-bar" style="width:0%"></div>
+          </div>
+          <div class="cost-note" style="margin-top:6px;">Free tier · No usage API<br>Session count from dashboard</div>
+        </div>
+        <button class="fetch-btn" onclick="fetchGemini()">⟳ FETCH FROM DASHBOARD</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#4ab0ff;"></div>Gemini (free)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#c87dff;"></div>Claude (paid)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#00d4c8;"></div>Core logic</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#39ff8a;"></div>Google services</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffb300;"></div>Server infrastructure</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#5a6e90;"></div>Local storage</div>
+  </div>
+
+</div><!-- /diagram -->
+
+<script>
+// ── Key visibility toggle ──────────────────────────────────────────────────────
+function toggleKey(id) {
+  const input = document.getElementById('key-' + id);
+  const btn = input.nextElementSibling;
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (btn) btn.textContent = 'HIDE';
+  } else {
+    input.type = 'password';
+    if (btn) btn.textContent = 'SHOW';
+  }
+}
+
+// ── Bar color helper ───────────────────────────────────────────────────────────
+function barColor(pct) {
+  if (pct > 80) return 'fill-red';
+  if (pct > 50) return 'fill-amber';
+  return 'fill-green';
+}
+
+function setBar(id, pct, colorClass) {
+  const el = document.getElementById(id);
+  el.style.width = Math.min(pct, 100) + '%';
+  el.className = 'usage-bar-fill ' + (colorClass || barColor(pct));
+}
+
+// ── Fetch from local dashboard API ────────────────────────────────────────────
+const DASH = window.location.origin;
+
+async function getDashboardData() {
+  try {
+    const r = await fetch(DASH + '/api/data');
+    return await r.json();
+  } catch(e) {
+    return null;
+  }
+}
+
+// ── BRAVE SEARCH ──────────────────────────────────────────────────────────────
+// Brave doesn't expose a public usage API, so we track via our own dashboard counter
+async function fetchBrave() {
+  const btn = document.querySelector('#card-brave .fetch-btn');
+  btn.textContent = '⟳ FETCHING...'; btn.classList.add('loading');
+
+  const data = await getDashboardData();
+  btn.textContent = '⟳ FETCH USAGE'; btn.classList.remove('loading');
+
+  if (!data) {
+    document.getElementById('brave-meta').textContent = '⚠ Could not reach dashboard at ' + DASH;
+    return;
+  }
+
+  // Count web_search tool calls from recent messages
+  const recent = data.recent_messages || [];
+  const searchCalls = recent.filter(m => m.tool === 'web_search').length;
+  const totalCalls = data.total_requests || 0;
+
+  // Estimate: about 30% of total requests use search
+  const estimated = Math.round(totalCalls * 0.3);
+  const pct = (estimated / 1000) * 100;
+
+  document.getElementById('brave-used').textContent = estimated;
+  setBar('brave-bar', pct);
+  document.getElementById('brave-meta').textContent =
+    `~${estimated} estimated from ${totalCalls} total requests · Resets monthly`;
+}
+
+// ── CLAUDE ────────────────────────────────────────────────────────────────────
+async function fetchClaude() {
+  const btn = document.querySelector('#card-claude .fetch-btn');
+  btn.textContent = '⟳ FETCHING...'; btn.classList.add('loading');
+
+  // Try real dashboard metrics first (has actual token counts from API)
+  const data = await getDashboardData();
+  btn.textContent = '⟳ FETCH REAL USAGE'; btn.classList.remove('loading');
+
+  if (!data) {
+    document.getElementById('claude-meta').textContent = '⚠ Could not reach dashboard';
+    return;
+  }
+
+  const calls        = data.claude_count       || 0;
+  const inputTok     = data.total_input_tokens  || 0;
+  const outputTok    = data.total_output_tokens || 0;
+  const sessionCost  = data.session_cost_usd    || 0;
+
+  // If we have real token data, use it. Otherwise fall back to estimate.
+  const hasRealData = inputTok > 0 || outputTok > 0;
+
+  const displayInput  = hasRealData ? inputTok  : calls * 500;
+  const displayOutput = hasRealData ? outputTok : calls * 200;
+  const displayCost   = hasRealData ? sessionCost
+    : ((displayInput / 1e6) * 3 + (displayOutput / 1e6) * 15);
+
+  const inputCost  = (displayInput  / 1_000_000) * 3;
+  const outputCost = (displayOutput / 1_000_000) * 15;
+
+  document.getElementById('claude-calls').textContent         = calls;
+  document.getElementById('claude-cost').textContent          = '$' + displayCost.toFixed(6);
+  document.getElementById('claude-input-tokens').textContent  = displayInput.toLocaleString();
+  document.getElementById('claude-output-tokens').textContent = displayOutput.toLocaleString();
+  document.getElementById('claude-meta').textContent          =
+    hasRealData ? '✓ Real token counts from API' : '~ Estimated (no real data yet — send a message)';
+  setBar('claude-bar', Math.min(calls * 2, 100), 'fill-purple');
+
+  // Update analytics panels
+  updateAnalytics(data);
+}
+
+function updateAnalytics(data) {
+  const inputTok    = data.total_input_tokens  || 0;
+  const outputTok   = data.total_output_tokens || 0;
+  const totalTok    = inputTok + outputTok;
+  const inputCost   = (inputTok  / 1e6) * 3;
+  const outputCost  = (outputTok / 1e6) * 15;
+  const totalCost   = inputCost + outputCost;
+
+  // Token breakdown panel
+  document.getElementById('ana-total-tokens').textContent  = totalTok.toLocaleString();
+  document.getElementById('ana-input').textContent         = inputTok.toLocaleString();
+  document.getElementById('ana-output').textContent        = outputTok.toLocaleString();
+  document.getElementById('ana-input-cost').textContent    = '$' + inputCost.toFixed(6);
+  document.getElementById('ana-output-cost').textContent   = '$' + outputCost.toFixed(6);
+  document.getElementById('ana-total-cost').textContent    = '$' + totalCost.toFixed(4);
+
+  // Input/output bar proportions
+  const inputPct  = totalTok > 0 ? (inputTok  / totalTok) * 100 : 50;
+  const outputPct = totalTok > 0 ? (outputTok / totalTok) * 100 : 50;
+  document.getElementById('ana-input-bar').style.width  = inputPct  + '%';
+  document.getElementById('ana-output-bar').style.width = outputPct + '%';
+
+  // Daily cost trend chart
+  const daily = data.daily_tokens || {};
+  drawTrendChart(daily);
+
+  // Per-tool cost breakdown
+  const toolCosts = data.tool_costs || {};
+  renderToolCosts(toolCosts);
+}
+
+function drawTrendChart(daily) {
+  const canvas = document.getElementById('trend-canvas');
+  if (!canvas) return;
+
+  const ctx  = canvas.getContext('2d');
+  const W    = canvas.width  = canvas.offsetWidth  || 300;
+  const H    = canvas.height = canvas.offsetHeight || 80;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Get last 14 days
+  const days = Object.keys(daily).sort().slice(-14);
+  if (days.length < 2) {
+    ctx.fillStyle = '#3a4a6a';
+    ctx.font = '10px Share Tech Mono';
+    ctx.fillText('Not enough data yet — keep using the bot!', 10, H/2);
+    document.getElementById('trend-meta').textContent = 'Need 2+ days of data for trend';
+    return;
+  }
+
+  const costs = days.map(d => daily[d].cost || 0);
+  const maxCost = Math.max(...costs, 0.0001);
+  const step = W / (days.length - 1);
+
+  const pts = costs.map((c, i) => ({
+    x: i * step,
+    y: H - (c / maxCost) * H * 0.85 - 4,
+  }));
+
+  // Fill area
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(57,255,138,0.06)';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = '#39ff8a';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#39ff8a';
+  ctx.shadowBlur = 4;
+  ctx.stroke();
+
+  // Dots
+  pts.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#39ff8a';
+    ctx.shadowBlur = 6;
+    ctx.fill();
+  });
+
+  // Labels — first, mid, last
+  const labelDays = [days[0], days[Math.floor(days.length/2)], days[days.length-1]];
+  document.getElementById('trend-labels').innerHTML =
+    labelDays.map(d => `<span>${d.slice(5)}</span>`).join('');
+
+  const totalCost = costs.reduce((a, b) => a + b, 0);
+  document.getElementById('trend-meta').textContent =
+    `${days.length} days tracked · avg $${(totalCost/days.length).toFixed(5)}/day`;
+}
+
+function renderToolCosts(toolCosts) {
+  const el = document.getElementById('tool-cost-list');
+  const entries = Object.entries(toolCosts);
+
+  if (entries.length === 0) {
+    el.innerHTML = '<div class="no-data-msg">NO TOOL DATA YET</div>';
+    return;
+  }
+
+  // Calculate cost per tool
+  const withCost = entries.map(([name, t]) => {
+    const cost = ((t.input_tokens / 1e6) * 3) + ((t.output_tokens / 1e6) * 15);
+    return { name, calls: t.calls, cost };
+  }).sort((a, b) => b.cost - a.cost);
+
+  const maxCost = withCost[0].cost || 0.0001;
+
+  el.innerHTML = withCost.slice(0, 8).map(t => `
+    <div class="tool-cost-row">
+      <span class="tool-cost-name">${escHtml(t.name)}</span>
+      <span class="tool-cost-calls">${t.calls}×</span>
+      <span class="tool-cost-price">$${t.cost.toFixed(5)}</span>
+      <div class="tool-cost-bar-wrap">
+        <div class="tool-cost-bar-track">
+          <div class="tool-cost-bar-fill" style="width:${(t.cost/maxCost)*100}%"></div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── WHISPER ───────────────────────────────────────────────────────────────────
+async function fetchWhisper() {
+  const btn = document.querySelector('#card-whisper .fetch-btn');
+  btn.textContent = '⟳ FETCHING...'; btn.classList.add('loading');
+
+  const data = await getDashboardData();
+  btn.textContent = '⟳ ESTIMATE FROM DASHBOARD'; btn.classList.remove('loading');
+
+  if (!data) {
+    document.getElementById('whisper-count').textContent = '⚠ No data';
+    return;
+  }
+
+  // Count voice messages from recent log
+  const recent = data.recent_messages || [];
+  const voiceCount = recent.filter(m => m.tool === '' && m.model === 'gemini').length;
+  // $0.006/min, avg 10s per voice note = $0.001 per message
+  const cost = voiceCount * 0.001;
+
+  document.getElementById('whisper-count').textContent = voiceCount;
+  document.getElementById('whisper-cost').textContent = '$' + cost.toFixed(4);
+  setBar('whisper-bar', Math.min(voiceCount * 5, 100), 'fill-purple');
+}
+
+// ── GOOGLE ────────────────────────────────────────────────────────────────────
+async function fetchGoogle() {
+  const btn = document.querySelector('#card-google .fetch-btn');
+  btn.textContent = '⟳ FETCHING...'; btn.classList.add('loading');
+
+  const data = await getDashboardData();
+  btn.textContent = '⟳ FETCH FROM DASHBOARD'; btn.classList.remove('loading');
+
+  if (!data) {
+    document.getElementById('google-meta').textContent = '⚠ Could not reach dashboard';
+    return;
+  }
+
+  const total = data.total_requests || 0;
+  const recent = data.recent_messages || [];
+
+  // Count tool usage from log
+  const calCalls   = recent.filter(m => m.tool && m.tool.includes('calendar')).length;
+  const gmailCalls = recent.filter(m => m.tool && m.tool.includes('email')).length;
+  const taskCalls  = recent.filter(m => m.tool && m.tool.includes('task')).length;
+
+  document.getElementById('gcal-used').textContent  = calCalls;
+  document.getElementById('gmail-used').textContent = gmailCalls;
+  document.getElementById('tasks-used').textContent = taskCalls;
+
+  // Google quotas are massive — these will always be near 0%
+  setBar('gcal-bar',   (calCalls   / 1000000) * 100, 'fill-blue');
+  setBar('gmail-bar',  (gmailCalls / 1000000) * 100, 'fill-blue');
+  setBar('tasks-bar',  (taskCalls  / 50000)   * 100, 'fill-blue');
+
+  // Update status dots
+  ['gcal','gmail','tasks'].forEach(id => {
+    const dot = document.getElementById('dot-' + id);
+    if (dot) { dot.className = 'status-dot-sm dot-ok'; }
+  });
+
+  document.getElementById('google-meta').textContent =
+    `${total} total requests · Google quotas are effectively unlimited for personal use`;
+}
+
+// ── OPENWEATHERMAP ────────────────────────────────────────────────────────────
+// Uses /api/test_weather (server-side) so the real key is never exposed to browser
+async function fetchWeather() {
+  const btn = document.querySelector('#card-weather .fetch-btn');
+  btn.textContent = '⟳ TESTING...'; btn.classList.add('loading');
+
+  try {
+    const r = await fetch(DASH + '/api/test_weather');
+    const d = await r.json();
+    btn.textContent = '⟳ TEST KEY'; btn.classList.remove('loading');
+
+    if (d.ok) {
+      document.getElementById('weather-status').innerHTML =
+        '<span class="status-dot-sm dot-ok"></span>' + d.message.toUpperCase();
+    } else {
+      document.getElementById('weather-status').innerHTML =
+        '<span class="status-dot-sm dot-err"></span>' + (d.message || 'FAILED').toUpperCase();
+    }
+  } catch(e) {
+    btn.textContent = '⟳ TEST KEY'; btn.classList.remove('loading');
+    document.getElementById('weather-status').innerHTML =
+      '<span class="status-dot-sm dot-err"></span>REQUEST FAILED';
+  }
+}
+
+// ── GEMINI ────────────────────────────────────────────────────────────────────
+async function fetchGemini() {
+  const btn = document.querySelector('#card-gemini .fetch-btn');
+  btn.textContent = '⟳ FETCHING...'; btn.classList.add('loading');
+
+  const data = await getDashboardData();
+  btn.textContent = '⟳ FETCH FROM DASHBOARD'; btn.classList.remove('loading');
+
+  if (!data) {
+    document.getElementById('gemini-session').textContent = '!';
+    return;
+  }
+
+  const calls = data.gemini_count || 0;
+  const total = data.total_requests || 1;
+  document.getElementById('gemini-session').textContent = calls;
+  setBar('gemini-bar', (calls / Math.max(total, 1)) * 100, 'fill-blue');
+}
+
+// ── Auto-load dashboard data on page open ────────────────────────────────────
+window.addEventListener('load', async () => {
+  await new Promise(r => setTimeout(r, 600));
+
+  // Auto-load API keys from server .env
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    if (cfg.anthropic) document.getElementById('key-claude').value   = cfg.anthropic;
+    if (cfg.gemini)    document.getElementById('key-gemini').value   = cfg.gemini;
+    if (cfg.openai)    document.getElementById('key-whisper').value  = cfg.openai;
+    if (cfg.brave)     document.getElementById('key-brave').value    = cfg.brave;
+    if (cfg.weather)   document.getElementById('key-weather').value  = cfg.weather;
+  } catch(e) {
+    console.warn('Could not load API config:', e);
+  }
+
+  fetchClaude();   // also calls updateAnalytics internally
+  fetchGemini();
+  fetchGoogle();
+});
+
+function escHtml(str) {
+  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

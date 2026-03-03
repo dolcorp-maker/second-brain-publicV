@@ -1,0 +1,2042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Second Brain — Mission Control</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset & Base ─────────────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:         #060a14;
+    --bg-panel:   #0a1020;
+    --bg-card:    #0e1830;
+    --bg-card2:   #111d38;
+    --cyan:       #00d4c8;
+    --cyan-dim:   #007a74;
+    --green:      #39ff8a;
+    --green-dim:  #1a6e3e;
+    --amber:      #ffb300;
+    --red:        #ff4444;
+    --blue:       #4ab0ff;
+    --purple:     #c87dff;
+    --text:       #c8d8f0;
+    --text-dim:   #5a6e90;
+    --border:     #1a2a4a;
+    --scan:       rgba(0, 212, 200, 0.03);
+  }
+
+  html, body {
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+  }
+
+  /* ── Scan line overlay — the signature effect ────────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      var(--scan) 2px,
+      var(--scan) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── Subtle vignette ──────────────────────────────────────────────────────── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+    pointer-events: none;
+    z-index: 9998;
+  }
+
+  /* ── Grid layout ──────────────────────────────────────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-rows: 64px 1fr 52px;
+    grid-template-columns: 1fr;
+    height: 100vh;
+    padding: 0;
+    gap: 0;
+  }
+
+  .body {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  /* ── Mobile responsive ─────────────────────────────────────────────────────── */
+  @media (max-width: 900px) {
+    html, body { font-size: 12px; }
+
+    /* Switch layout to block — avoids 1fr=0 in auto-height grid */
+    .layout { display: block; height: auto; }
+
+    /* ── Header: compact ── */
+    header {
+      padding: 0 10px;
+      height: 50px;
+      flex-shrink: 0;
+    }
+    .header-left { gap: 8px; }
+    .pulse-dot { width: 8px; height: 8px; }
+    .title { font-size: 13px; letter-spacing: 1px; }
+    .subtitle { display: none; }
+    #clock { font-size: 15px; letter-spacing: 1px; }
+    #date { display: none; }
+
+    /* ── Page switcher: compact, top-right (same as desktop but smaller) ── */
+    .page-switcher { top: 8px; right: 8px; gap: 4px; }
+    .page-btn { font-size: 7px; padding: 3px 6px; gap: 3px; letter-spacing: 0; }
+
+    /* ── Body: single column ── */
+    .body {
+      display: grid;
+      grid-template-columns: 1fr;
+      overflow: visible;
+      height: auto;
+      padding: 6px;
+      gap: 6px;
+    }
+
+    /* ── Bottom panels: single column ── */
+    .bottom-panels {
+      grid-template-columns: 1fr !important;
+      padding: 0 6px 6px;
+      gap: 6px;
+    }
+
+    /* ── Footer: stack items vertically ── */
+    footer {
+      flex-direction: column;
+      height: auto;
+      padding: 8px 12px;
+      gap: 3px;
+      font-size: 9px;
+      text-align: center;
+      align-items: center;
+    }
+
+    /* ── Panels: let content determine height ── */
+    .panel { overflow: visible; }
+    .panel-body { overflow-y: visible; min-height: 0; padding: 10px 12px; gap: 8px; }
+
+    /* ── Metric values: slightly smaller ── */
+    .metric-value { font-size: 15px; }
+    .sparkline-wrap { height: 30px; }
+
+    /* ── Counters ── */
+    .counter-val { font-size: 16px; }
+    .counter-card { padding: 5px 4px; }
+
+    /* ── Terminal: capped height so it doesn't take over ── */
+    .terminal-wrap { flex: none; height: 160px; }
+
+    /* ── Weather ── */
+    .weather-temp { font-size: 20px; }
+
+    /* ── Services: hide heartbeat canvas to save row width ── */
+    .svc-heartbeat { display: none; }
+    .svc-row { grid-template-columns: 14px 1fr auto auto; padding: 4px 7px; }
+
+    /* ── Transmission log ── */
+    .exchange-list { max-height: 280px; }
+    .exchange-prompt { max-width: 150px; }
+
+    /* ── Brain state: single column ── */
+    .brain-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── Header ───────────────────────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  header::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    animation: scan-h 4s linear infinite;
+  }
+
+  @keyframes scan-h {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .pulse-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green), 0 0 20px var(--green-dim);
+    animation: pulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green), 0 0 20px var(--green-dim); }
+    50% { opacity: 0.4; box-shadow: 0 0 4px var(--green-dim); }
+  }
+
+  .title {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--cyan);
+    letter-spacing: 4px;
+    text-shadow: 0 0 20px var(--cyan-dim);
+  }
+
+  .subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .header-right {
+    text-align: right;
+  }
+
+  #clock {
+    font-family: 'Orbitron', monospace;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 2px;
+  }
+
+  #date {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  /* ── Panel ────────────────────────────────────────────────────────────────── */
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity: 0.5;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .panel-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 3px;
+  }
+
+  .panel-badge {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  .panel-body {
+    flex: 1;
+    padding: 12px 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .panel-body::-webkit-scrollbar { width: 3px; }
+  .panel-body::-webkit-scrollbar-track { background: transparent; }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Metric rows ──────────────────────────────────────────────────────────── */
+  .metric-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .metric-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .metric-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .metric-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--cyan);
+    text-shadow: 0 0 10px var(--cyan-dim);
+    transition: color 0.5s;
+  }
+
+  .metric-value.warn { color: var(--amber); text-shadow: 0 0 10px rgba(255,179,0,0.3); }
+  .metric-value.danger { color: var(--red); text-shadow: 0 0 10px rgba(255,68,68,0.3); }
+  .metric-value.ok { color: var(--green); text-shadow: 0 0 10px var(--green-dim); }
+
+  .metric-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* ── Progress bar ─────────────────────────────────────────────────────────── */
+  .bar-track {
+    height: 6px;
+    background: var(--bg-card);
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--cyan);
+    box-shadow: 0 0 6px var(--cyan-dim);
+    transition: width 0.8s ease, background 0.5s;
+  }
+
+  .bar-fill.warn { background: var(--amber); box-shadow: 0 0 6px rgba(255,179,0,0.4); }
+  .bar-fill.danger { background: var(--red); box-shadow: 0 0 6px rgba(255,68,68,0.4); }
+
+  /* ── Sparkline ────────────────────────────────────────────────────────────── */
+  .sparkline-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px;
+    height: 44px;
+  }
+
+  #sparkline {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── Divider ──────────────────────────────────────────────────────────────── */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
+
+  /* ── Stats counters ───────────────────────────────────────────────────────── */
+  .counters {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+  }
+
+  .counter-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 6px;
+    text-align: center;
+  }
+
+  .counter-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .counter-val.gemini { color: var(--blue); text-shadow: 0 0 10px rgba(74,176,255,0.3); }
+  .counter-val.claude { color: var(--purple); text-shadow: 0 0 10px rgba(200,125,255,0.3); }
+
+  .counter-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  /* ── Activity log ─────────────────────────────────────────────────────────── */
+  .log-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+
+  .log-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .log-entry {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 6px 8px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: start;
+    animation: slide-in 0.3s ease;
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .log-badge {
+    font-size: 9px;
+    padding: 2px 5px;
+    border-radius: 2px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    margin-top: 1px;
+  }
+
+  .log-badge.gemini { background: rgba(74,176,255,0.15); color: var(--blue); border: 1px solid rgba(74,176,255,0.3); }
+  .log-badge.claude { background: rgba(200,125,255,0.15); color: var(--purple); border: 1px solid rgba(200,125,255,0.3); }
+
+  .log-text {
+    font-size: 11px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .log-tool {
+    font-size: 9px;
+    color: var(--cyan-dim);
+    margin-top: 2px;
+  }
+
+  .log-time {
+    font-size: 9px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    margin-top: 2px;
+  }
+
+  .empty-log {
+    color: var(--text-dim);
+    font-size: 11px;
+    text-align: center;
+    padding: 20px 0;
+    letter-spacing: 1px;
+  }
+
+  /* ── Status indicators ────────────────────────────────────────────────────── */
+  .service-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .service-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 7px 10px;
+  }
+
+  .service-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.err { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  .service-status {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+
+  .service-status.ok { color: var(--green); }
+  .service-status.err { color: var(--red); }
+
+  /* ── Weather card ─────────────────────────────────────────────────────────── */
+  .weather-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+
+  .weather-temp {
+    font-family: 'Orbitron', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--cyan);
+    text-shadow: 0 0 15px var(--cyan-dim);
+    grid-row: span 2;
+    display: flex;
+    align-items: center;
+  }
+
+  .weather-desc {
+    font-size: 11px;
+    color: var(--text);
+    text-transform: capitalize;
+  }
+
+  .weather-tomorrow {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* ── Match card ───────────────────────────────────────────────────────────── */
+  .match-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--green);
+    border-radius: 3px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .match-teams {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .match-home { font-size: 12px; color: var(--text); }
+  .match-vs { font-size: 9px; color: var(--text-dim); }
+  .match-away { font-size: 12px; color: var(--green); }
+
+  .match-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+
+  .match-date { font-size: 10px; color: var(--cyan); }
+  .match-venue { font-size: 10px; color: var(--text-dim); }
+
+  /* ── Footer ───────────────────────────────────────────────────────────────── */
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  #last-update { color: var(--cyan-dim); }
+
+  /* ── Section label ────────────────────────────────────────────────────────── */
+  .section-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 2px;
+  }
+
+  /* ── Bottom panels (full width, below the 3-col layout) ──────────────────── */
+  .bottom-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 0 8px 8px;
+  }
+
+  /* ── Transmission log ─────────────────────────────────────────────────────── */
+  .exchange-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    max-height: 420px;
+    padding-right: 2px;
+  }
+
+  .exchange-list::-webkit-scrollbar { width: 3px; }
+  .exchange-list::-webkit-scrollbar-track { background: var(--bg); }
+  .exchange-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .exchange-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    animation: slide-in 0.3s ease;
+  }
+
+  .exchange-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    background: var(--bg-card2);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .exchange-header:hover { background: #141e3c; }
+
+  .exchange-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .exchange-prompt {
+    font-size: 11px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 260px;
+  }
+
+  .exchange-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .exchange-time { font-size: 9px; color: var(--text-dim); }
+
+  .timing-pill {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(0,212,200,0.08);
+    color: var(--cyan);
+    border: 1px solid rgba(0,212,200,0.2);
+  }
+
+  .timing-pill.slow { background: rgba(255,179,0,0.08); color: var(--amber); border-color: rgba(255,179,0,0.2); }
+
+  .expand-arrow {
+    font-size: 9px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+
+  .exchange-body {
+    display: none;
+    padding: 10px;
+  }
+
+  .exchange-body.open { display: block; }
+
+  .exchange-section {
+    margin-bottom: 8px;
+  }
+
+  .ex-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+
+  .ex-text {
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .ex-text.prompt { color: var(--cyan); }
+  .ex-text.response { color: var(--text); }
+
+  /* Tool chain trace */
+  .tool-chain {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tool-step {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    align-items: start;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+
+  .tool-step-name {
+    color: var(--cyan);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .tool-step-details { color: var(--text-dim); line-height: 1.5; }
+  .tool-step-input  { color: #8a9ab8; }
+  .tool-step-result { color: #6a8a6a; margin-top: 2px; }
+
+  .no-tools { font-size: 10px; color: var(--text-dim); font-style: italic; }
+
+  /* ── Brain state panel ────────────────────────────────────────────────────── */
+  .brain-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    flex: 1;
+  }
+
+  .brain-col { display: flex; flex-direction: column; gap: 5px; }
+
+  .brain-col-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 2px;
+  }
+
+  .brain-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 7px 9px;
+    font-size: 10px;
+    color: var(--text);
+    line-height: 1.5;
+    transition: border-color 0.2s, background 0.15s;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .brain-item:hover { border-color: var(--cyan-dim); background: #101a32; }
+
+  .brain-item-content {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .brain-item-actions {
+    display: none;
+    flex-shrink: 0;
+    gap: 3px;
+    padding-top: 1px;
+  }
+
+  .brain-item:hover .brain-item-actions { display: flex; }
+
+  .brain-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 9px;
+    padding: 1px 4px;
+    line-height: 1.4;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+
+  .brain-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+  .brain-btn.del:hover { border-color: rgba(255,68,68,0.4); color: var(--red); }
+
+  .brain-item.thought { border-left: 2px solid var(--cyan); }
+  .brain-item.task    { border-left: 2px solid var(--green); }
+  .brain-item.task.high { border-left: 2px solid var(--red); }
+  .brain-item.task.medium { border-left: 2px solid var(--amber); }
+
+  .brain-tag {
+    font-size: 8px;
+    color: var(--text-dim);
+    margin-top: 3px;
+    letter-spacing: 1px;
+  }
+
+  .brain-empty {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 16px 0;
+    letter-spacing: 1px;
+  }
+
+  /* ── Systemd services ─────────────────────────────────────────────────────── */
+  .services-section { margin-top: 6px; }
+
+  .svc-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 5px;
+  }
+
+  .svc-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .svc-row {
+    display: grid;
+    grid-template-columns: 18px 1fr auto auto;
+    align-items: center;
+    gap: 7px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 5px 8px;
+    overflow: hidden;
+    position: relative;
+    transition: border-color 0.3s;
+  }
+
+  .svc-row.active  { border-left: 2px solid var(--green); }
+  .svc-row.failed  { border-left: 2px solid var(--red); animation: svc-alert 1s ease-in-out infinite; }
+  .svc-row.inactive { border-left: 2px solid var(--text-dim); opacity: 0.6; }
+
+  @keyframes svc-alert {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 8px rgba(255,68,68,0.3); }
+  }
+
+  /* The heartbeat canvas — the surprise feature */
+  .svc-heartbeat {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 60px;
+    opacity: 0.25;
+    pointer-events: none;
+  }
+
+  .svc-indicator {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .svc-indicator.active {
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: svc-pulse 2s ease-in-out infinite;
+  }
+
+  .svc-indicator.failed  { background: var(--red);      box-shadow: 0 0 6px var(--red); }
+  .svc-indicator.inactive { background: var(--text-dim); }
+
+  @keyframes svc-pulse {
+    0%, 100% { opacity: 1;   box-shadow: 0 0 6px var(--green); }
+    50%       { opacity: 0.4; box-shadow: 0 0 2px var(--green-dim); }
+  }
+
+  .svc-name {
+    font-size: 10px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .svc-uptime { font-size: 9px; color: var(--text-dim); white-space: nowrap; }
+
+  .svc-state {
+    font-size: 8px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  .svc-state.active   { background: rgba(57,255,138,0.1);  color: var(--green); }
+  .svc-state.failed   { background: rgba(255,68,68,0.1);   color: var(--red); }
+  .svc-state.inactive { background: rgba(90,110,144,0.1);  color: var(--text-dim); }
+
+
+  /* ── Page switcher ───────────────────────────────────────────────────────── */
+  .page-switcher {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    gap: 6px;
+  }
+
+  .page-btn {
+    background: #0a1020;
+    border: 1px solid #1a2a4a;
+    border-radius: 4px;
+    color: #5a6e90;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .page-btn:hover {
+    border-color: #39ff8a;
+    color: #39ff8a;
+    box-shadow: 0 0 8px rgba(57,255,138,0.15);
+  }
+
+  .page-btn.active {
+    border-color: #39ff8a;
+    color: #39ff8a;
+    background: rgba(57,255,138,0.05);
+  }
+
+  /* ── Terminal log ─────────────────────────────────────────────────────────── */
+  .term-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    flex-shrink: 0;
+  }
+
+  .term-live-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 4px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  .terminal-wrap {
+    background: #010306;
+    border: 1px solid #0d1a10;
+    border-radius: 3px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    line-height: 1.55;
+  }
+
+  .terminal-wrap::-webkit-scrollbar { width: 3px; }
+  .terminal-wrap::-webkit-scrollbar-track { background: transparent; }
+  .terminal-wrap::-webkit-scrollbar-thumb { background: #1a2a1a; border-radius: 2px; }
+
+  .term-line { color: #4a7a5a; word-break: break-all; }
+  .term-line.term-err { color: var(--red); }
+  .term-line.term-warn { color: var(--amber); }
+  .term-line.term-ok { color: #6dba88; }
+  .term-line.term-dbg { color: #2a3d2e; }
+
+  /* ── Add-new button ───────────────────────────────────────────────────────── */
+  .add-new-btn {
+    background: rgba(0,212,200,0.07);
+    border: 1px solid var(--cyan-dim);
+    border-radius: 3px;
+    color: var(--cyan);
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 1px;
+    padding: 3px 7px;
+    transition: all 0.2s;
+  }
+
+  .add-new-btn:hover { background: rgba(0,212,200,0.15); }
+
+  /* ── Edit modal ───────────────────────────────────────────────────────────── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    background: rgba(0, 0, 0, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .modal-box {
+    background: #0a1020;
+    border: 1px solid #1a2a4a;
+    border-radius: 6px;
+    padding: 24px;
+    min-width: 320px;
+    max-width: 480px;
+    width: 100%;
+    position: relative;
+  }
+
+  .modal-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  }
+
+  .modal-title-text {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 3px;
+    margin-bottom: 18px;
+  }
+
+  .modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  .modal-field label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .modal-input, .modal-select, .modal-textarea {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 6px 8px;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+
+  .modal-input:focus, .modal-select:focus, .modal-textarea:focus {
+    border-color: var(--cyan-dim);
+  }
+
+  .modal-textarea { resize: vertical; min-height: 72px; }
+  .modal-select option { background: #0a1020; }
+
+  .modal-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .modal-btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 7px 14px;
+    border-radius: 3px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .modal-btn.save {
+    background: rgba(0,212,200,0.08);
+    border-color: var(--cyan-dim);
+    color: var(--cyan);
+  }
+
+  .modal-btn.save:hover { background: rgba(0,212,200,0.18); }
+
+  .modal-btn.delete {
+    background: rgba(255,68,68,0.07);
+    border-color: rgba(255,68,68,0.3);
+    color: var(--red);
+  }
+
+  .modal-btn.delete:hover { background: rgba(255,68,68,0.14); }
+
+  .modal-btn.cancel {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text-dim);
+    margin-left: auto;
+  }
+
+  .modal-btn.cancel:hover { border-color: var(--text-dim); color: var(--text); }
+
+</style>
+</head>
+<body>
+
+  <!-- Page switcher -->
+  <div class="page-switcher">
+    <a class="page-btn active" href="/">🖥️ DASHBOARD</a>
+    <a class="page-btn" href="/architecture">⚙️ ARCHITECTURE</a>
+  </div>
+<div class="layout">
+
+  <!-- ── HEADER ──────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="header-left">
+      <div class="pulse-dot" id="status-dot"></div>
+      <div>
+        <div class="title">SECOND BRAIN</div>
+        <div class="subtitle">PERSONAL INTELLIGENCE SYSTEM · TEL AVIV</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button id="refresh-btn" onclick="refreshAll()" style="background:transparent;border:1px solid var(--green);color:var(--green);font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:2px;padding:4px 14px;cursor:pointer;border-radius:2px;margin-right:18px;transition:background 0.15s;" onmouseover="this.style.background='rgba(57,255,138,0.12)'" onmouseout="this.style.background='transparent'">⟳ REFRESH</button>
+      <div id="clock">--:--:--</div>
+      <div id="date">Loading...</div>
+    </div>
+  </header>
+
+  <!-- ── BODY ────────────────────────────────────────────────────────────── -->
+  <div class="body">
+
+    <!-- ── SYSTEM PANEL ──────────────────────────────────────────────────── -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">SYSTEM</span>
+        <span class="panel-badge" id="uptime">UP: --:--:--</span>
+      </div>
+      <div class="panel-body">
+
+        <div class="metric-row">
+          <div class="metric-label-row">
+            <span class="metric-label">CPU LOAD</span>
+            <span class="metric-value" id="cpu-val">--%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="cpu-bar" style="width:0%"></div></div>
+        </div>
+
+        <div class="sparkline-wrap">
+          <canvas id="sparkline"></canvas>
+        </div>
+
+        <div class="metric-row">
+          <div class="metric-label-row">
+            <span class="metric-label">MEMORY</span>
+            <span class="metric-value" id="ram-val">--%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="ram-bar" style="width:0%"></div></div>
+          <span class="metric-sub" id="ram-detail">-- MB / -- MB</span>
+        </div>
+
+        <div class="metric-row">
+          <div class="metric-label-row">
+            <span class="metric-label">CPU TEMP</span>
+            <span class="metric-value" id="temp-val">--°C</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="temp-bar" style="width:0%"></div></div>
+        </div>
+
+        <div class="metric-row">
+          <div class="metric-label-row">
+            <span class="metric-label">DISK</span>
+            <span class="metric-value" id="disk-val">--%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="disk-bar" style="width:0%"></div></div>
+          <span class="metric-sub" id="disk-detail">-- GB / -- GB</span>
+        </div>
+
+        <div class="services-section">
+          <div class="svc-label">SERVICES</div>
+          <div class="svc-list" id="svc-list">
+            <div class="svc-row inactive">
+              <div class="svc-indicator inactive"></div>
+              <span class="svc-name">Loading...</span>
+              <span class="svc-uptime"></span>
+              <span class="svc-state inactive">--</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── ACTIVITY PANEL ────────────────────────────────────────────────── -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">BOT ACTIVITY</span>
+        <span class="panel-badge" id="bot-status">●  WAITING</span>
+      </div>
+      <div class="panel-body">
+
+        <div class="counters">
+          <div class="counter-card">
+            <div class="counter-val" id="total-count">0</div>
+            <div class="counter-label">TOTAL</div>
+          </div>
+          <div class="counter-card">
+            <div class="counter-val gemini" id="gemini-count">0</div>
+            <div class="counter-label">GEMINI</div>
+          </div>
+          <div class="counter-card">
+            <div class="counter-val claude" id="claude-count">0</div>
+            <div class="counter-label">CLAUDE</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="term-header">
+          <div class="term-live-dot"></div>
+          BOT LOG · DATA/BOT.LOG
+        </div>
+
+        <div class="terminal-wrap" id="terminal-log">
+          <div class="term-line term-ok">Loading bot.log...</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── STATUS PANEL ──────────────────────────────────────────────────── -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">STATUS</span>
+        <span class="panel-badge" id="last-update">--:--:--</span>
+      </div>
+      <div class="panel-body">
+
+        <div class="section-label">API SERVICES</div>
+        <div class="service-list" id="service-list">
+          <!-- populated by JS -->
+        </div>
+
+        <div class="divider"></div>
+        <div class="section-label">WEATHER · TEL AVIV</div>
+        <div id="weather-card" class="weather-card">
+          <div class="weather-temp" id="weather-temp">--°</div>
+          <div class="weather-desc" id="weather-desc">Loading...</div>
+          <div class="weather-tomorrow" id="weather-tomorrow"></div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="section-label">MACCABI HAIFA · NEXT FIXTURE</div>
+        <div id="match-card" class="match-card">
+          <div class="match-teams">
+            <div class="match-home" id="match-home">--</div>
+            <div class="match-vs">vs</div>
+            <div class="match-away" id="match-away">--</div>
+          </div>
+          <div class="match-meta">
+            <span class="match-date" id="match-date">--</span>
+            <span class="match-venue" id="match-venue">--</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── FOOTER ──────────────────────────────────────────────────────────── -->
+  <footer>
+    <span>SECOND BRAIN BOT · MACBOOK PRO · UBUNTU 22.04</span>
+    <span>LAST UPDATE: <span id="footer-update">--</span></span>
+    <span id="footer-ip">--:8080</span>
+  </footer>
+
+</div><!-- /.layout -->
+
+<!-- BOTTOM PANELS -->
+<div class="bottom-panels">
+
+    <!-- TRANSMISSION LOG -->
+    <div class="panel" style="min-height:300px;">
+      <div class="panel-header">
+        <span class="panel-title">TRANSMISSION LOG</span>
+        <span class="panel-badge" id="avg-response">AVG --ms</span>
+      </div>
+      <div class="panel-body">
+        <div class="exchange-list" id="exchange-list">
+          <div class="brain-empty">NO TRANSMISSIONS YET</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BRAIN STATE -->
+    <div class="panel" style="min-height:300px;">
+      <div class="panel-header">
+        <span class="panel-title">BRAIN STATE</span>
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <button class="add-new-btn" onclick="openNewModal('thought')">+ THOUGHT</button>
+          <button class="add-new-btn" onclick="openNewModal('task')">+ TASK</button>
+          <span class="panel-badge" id="brain-counts">-- thoughts &middot; -- tasks</span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="brain-grid">
+          <div class="brain-col">
+            <div class="brain-col-label">RECENT THOUGHTS</div>
+            <div id="thoughts-list"><div class="brain-empty">EMPTY</div></div>
+          </div>
+          <div class="brain-col">
+            <div class="brain-col-label">PENDING TASKS</div>
+            <div id="tasks-list"><div class="brain-empty">EMPTY</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+<!-- ── EDIT / ADD MODAL ──────────────────────────────────────────────────── -->
+<div id="edit-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <div class="modal-title-text" id="modal-title-text">EDIT</div>
+
+    <!-- Task fields -->
+    <div id="task-fields">
+      <div class="modal-field">
+        <label>TITLE</label>
+        <input id="modal-task-title" type="text" class="modal-input" placeholder="What needs to be done?">
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label>PRIORITY</label>
+          <select id="modal-task-priority" class="modal-select">
+            <option value="low">LOW</option>
+            <option value="medium" selected>MEDIUM</option>
+            <option value="high">HIGH</option>
+          </select>
+        </div>
+        <div class="modal-field">
+          <label>STATUS</label>
+          <select id="modal-task-status" class="modal-select">
+            <option value="pending" selected>PENDING</option>
+            <option value="in_progress">IN PROGRESS</option>
+            <option value="done">DONE</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-field">
+        <label>DUE DATE</label>
+        <input id="modal-task-due" type="text" class="modal-input" placeholder="2026-03-01 or 'tomorrow'">
+      </div>
+      <div class="modal-field">
+        <label>NOTES</label>
+        <textarea id="modal-task-notes" class="modal-textarea" placeholder="Optional context..."></textarea>
+      </div>
+    </div>
+
+    <!-- Thought fields -->
+    <div id="thought-fields" style="display:none;">
+      <div class="modal-field">
+        <label>CONTENT</label>
+        <textarea id="modal-thought-content" class="modal-textarea" rows="4" placeholder="What's on your mind?"></textarea>
+      </div>
+      <div class="modal-field">
+        <label>TAGS (comma-separated)</label>
+        <input id="modal-thought-tags" type="text" class="modal-input" placeholder="ideas, work, health">
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="modal-btn save" onclick="saveModal()">✓ SAVE</button>
+      <button class="modal-btn delete" id="modal-delete-btn" onclick="deleteModal()">✕ DELETE</button>
+      <button class="modal-btn cancel" onclick="closeModal()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Clock ──────────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toTimeString().slice(0,8);
+  document.getElementById('date').textContent =
+    now.toLocaleDateString('en-IL', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Sparkline ──────────────────────────────────────────────────────────────────
+const cpuHistory = [];
+const MAX_HISTORY = 40;
+
+function drawSparkline() {
+  const canvas = document.getElementById('sparkline');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth;
+  const H = canvas.offsetHeight;
+  canvas.width = W;
+  canvas.height = H;
+
+  ctx.clearRect(0, 0, W, H);
+  if (cpuHistory.length < 2) return;
+
+  const pts = cpuHistory.map((v, i) => ({
+    x: (i / (MAX_HISTORY - 1)) * W,
+    y: H - (v / 100) * H * 0.9 - 2
+  }));
+
+  // Fill area under line
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0, 212, 200, 0.08)';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = '#00d4c8';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#00d4c8';
+  ctx.shadowBlur = 4;
+  ctx.stroke();
+}
+
+// ── Color helpers ──────────────────────────────────────────────────────────────
+function barClass(val, warnAt, dangerAt) {
+  if (val >= dangerAt) return 'danger';
+  if (val >= warnAt) return 'warn';
+  return '';
+}
+
+function setBar(barId, valId, percent, warnAt, dangerAt, label) {
+  const cls = barClass(percent, warnAt, dangerAt);
+  const bar = document.getElementById(barId);
+  const val = document.getElementById(valId);
+  bar.style.width = Math.min(percent, 100) + '%';
+  bar.className = 'bar-fill' + (cls ? ' ' + cls : '');
+  val.className = 'metric-value' + (cls ? ' ' + cls : '');
+  val.textContent = label || Math.round(percent) + '%';
+}
+
+// ── Fetch system stats ─────────────────────────────────────────────────────────
+async function fetchSystem() {
+  try {
+    const r = await fetch('/api/system');
+    const d = await r.json();
+
+    // CPU
+    cpuHistory.push(d.cpu_percent);
+    if (cpuHistory.length > MAX_HISTORY) cpuHistory.shift();
+    setBar('cpu-bar', 'cpu-val', d.cpu_percent, 60, 80);
+    drawSparkline();
+
+    // RAM
+    setBar('ram-bar', 'ram-val', d.ram_percent, 70, 85);
+    document.getElementById('ram-detail').textContent =
+      `${d.ram_used_mb} MB / ${d.ram_total_mb} MB`;
+
+    // Temp
+    if (d.cpu_temp !== null && d.cpu_temp !== undefined) {
+      const tempPct = (d.cpu_temp / 85) * 100;
+      setBar('temp-bar', 'temp-val', tempPct, 60, 80, d.cpu_temp + '°C');
+    }
+
+    // Disk
+    setBar('disk-bar', 'disk-val', d.disk_percent, 70, 85);
+    document.getElementById('disk-detail').textContent =
+      `${d.disk_used_gb.toFixed(1)} GB / ${d.disk_total_gb.toFixed(1)} GB`;
+
+    // Uptime
+    const s = d.uptime_seconds;
+    const h = Math.floor(s / 3600).toString().padStart(2,'0');
+    const m = Math.floor((s % 3600) / 60).toString().padStart(2,'0');
+    const sec = (s % 60).toString().padStart(2,'0');
+    document.getElementById('uptime').textContent = `UP: ${h}:${m}:${sec}`;
+
+  } catch(e) {}
+}
+
+// ── Fetch bot metrics ──────────────────────────────────────────────────────────
+async function fetchData() {
+  try {
+    const r = await fetch('/api/data');
+    const d = await r.json();
+
+    // Bot status
+    const status = d.status || 'offline';
+    const statusEl = document.getElementById('bot-status');
+    const dotEl = document.getElementById('status-dot');
+    if (status === 'running') {
+      statusEl.textContent = '●  ONLINE';
+      statusEl.style.color = 'var(--green)';
+      dotEl.style.background = 'var(--green)';
+    } else {
+      statusEl.textContent = '●  OFFLINE';
+      statusEl.style.color = 'var(--red)';
+      dotEl.style.background = 'var(--red)';
+    }
+
+    // Counters
+    document.getElementById('total-count').textContent = d.total_requests || 0;
+    document.getElementById('gemini-count').textContent = d.gemini_count || 0;
+    document.getElementById('claude-count').textContent = d.claude_count || 0;
+
+    // Activity log (recent_messages → log-entries, kept for compatibility)
+    const logEl = document.getElementById('log-entries');
+    if (logEl) {
+      const entries = d.recent_messages || [];
+      if (entries.length === 0) {
+        logEl.innerHTML = '<div class="empty-log">AWAITING TRANSMISSIONS...</div>';
+      } else {
+        logEl.innerHTML = entries.slice(-6).reverse().map(msg => `
+          <div class="log-entry">
+            <div>
+              <span class="log-badge ${msg.model}">${msg.model === 'gemini' ? '⚡G' : '🧠C'}</span>
+            </div>
+            <div>
+              <div class="log-text">${escHtml(msg.text)}</div>
+              ${msg.tool ? `<div class="log-tool">→ ${msg.tool}</div>` : ''}
+            </div>
+            <div class="log-time">${msg.time}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Services
+    const apiStatus = d.api_status || {};
+    const services = [
+      ['Telegram',     apiStatus.telegram     !== false],
+      ['Gemini',       apiStatus.gemini       !== false],
+      ['Claude',       apiStatus.claude       !== false],
+      ['OpenWeather',  apiStatus.openweather  !== false],
+      ['Brave Search', apiStatus.brave        !== false],
+    ];
+    document.getElementById('service-list').innerHTML = services.map(([name, ok]) => `
+      <div class="service-row">
+        <span class="service-name">
+          <span class="status-dot ${ok ? 'ok' : 'err'}"></span>
+          ${name}
+        </span>
+        <span class="service-status ${ok ? 'ok' : 'err'}">${ok ? 'NOMINAL' : 'ERROR'}</span>
+      </div>
+    `).join('');
+
+    // Weather
+    const w = d.weather || {};
+    if (w.current) {
+      document.getElementById('weather-temp').textContent = w.current.temperature + '°C';
+      document.getElementById('weather-desc').textContent = w.current.description;
+      if (w.tomorrow) {
+        document.getElementById('weather-tomorrow').textContent =
+          `Tomorrow: ${w.tomorrow.temperature}°C · ${w.tomorrow.description}`;
+      }
+    }
+
+    // Match
+    const m = d.next_match || {};
+    if (m.home_team) {
+      document.getElementById('match-home').textContent = m.home_team;
+      document.getElementById('match-away').textContent = m.away_team;
+      document.getElementById('match-date').textContent = `${m.date} ${m.time || ''}`;
+      document.getElementById('match-venue').textContent = m.venue || '';
+    }
+
+    // Footer
+    const upd = d.last_update || '--';
+    document.getElementById('footer-update').textContent = upd;
+    document.getElementById('last-update').textContent = upd;
+
+    // Transmission log
+    if (d.exchanges) renderExchanges(d.exchanges);
+
+    // Avg response time
+    if (d.avg_response_ms) {
+      const ms = d.avg_response_ms;
+      const label = ms > 1000 ? (ms/1000).toFixed(1)+'s' : ms+'ms';
+      document.getElementById('avg-response').textContent = 'AVG ' + label;
+    }
+
+  } catch(e) {}
+}
+
+function escHtml(str) {
+  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Live terminal log ──────────────────────────────────────────────────────────
+async function fetchLog() {
+  try {
+    const r = await fetch('/api/log');
+    const d = await r.json();
+    const lines = d.lines || [];
+    const el = document.getElementById('terminal-log');
+    if (!el || lines.length === 0) return;
+
+    el.innerHTML = lines.map(line => {
+      let cls = 'term-line';
+      const lo = line.toLowerCase();
+      if (lo.includes('error') || lo.includes('exception') || lo.includes('traceback'))
+        cls += ' term-err';
+      else if (lo.includes('warning') || lo.includes('warn'))
+        cls += ' term-warn';
+      else if (lo.includes('debug'))
+        cls += ' term-dbg';
+      else if (lo.includes('info') || lo.includes('→') || lo.includes('tool:'))
+        cls += ' term-ok';
+      return `<div class="${cls}">${escHtml(line)}</div>`;
+    }).join('');
+
+    el.scrollTop = el.scrollHeight;
+  } catch(e) {}
+}
+
+// ── Brain data store (for modal pre-fill) ─────────────────────────────────────
+const brainData = { thoughts: {}, tasks: {} };
+
+// ── Modal state ────────────────────────────────────────────────────────────────
+let modalState = { type: null, id: null };
+
+function openNewModal(type) {
+  openEditModal(type, 'new', {});
+}
+
+function openEditModal(type, id, data) {
+  modalState = { type, id };
+  document.getElementById('modal-title-text').textContent =
+    id === 'new' ? `NEW ${type.toUpperCase()}` : `EDIT ${type.toUpperCase()}`;
+
+  const isTask    = (type === 'task');
+  document.getElementById('task-fields').style.display    = isTask ? 'block' : 'none';
+  document.getElementById('thought-fields').style.display = isTask ? 'none'  : 'block';
+  document.getElementById('modal-delete-btn').style.display = id === 'new' ? 'none' : 'inline-block';
+
+  if (isTask) {
+    document.getElementById('modal-task-title').value    = data.title    || '';
+    document.getElementById('modal-task-priority').value = data.priority || 'medium';
+    document.getElementById('modal-task-status').value   = data.status   || 'pending';
+    document.getElementById('modal-task-due').value      = data.due_date || '';
+    document.getElementById('modal-task-notes').value    = data.notes    || '';
+  } else {
+    document.getElementById('modal-thought-content').value = data.content || '';
+    document.getElementById('modal-thought-tags').value    = (data.tags || []).join(', ');
+  }
+
+  document.getElementById('edit-modal').style.display = 'flex';
+  // Focus first field
+  setTimeout(() => {
+    const f = isTask
+      ? document.getElementById('modal-task-title')
+      : document.getElementById('modal-thought-content');
+    if (f) f.focus();
+  }, 50);
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+  modalState = { type: null, id: null };
+}
+
+async function saveModal() {
+  const { type, id } = modalState;
+  let body;
+
+  if (type === 'task') {
+    const title = document.getElementById('modal-task-title').value.trim();
+    if (!title) { document.getElementById('modal-task-title').focus(); return; }
+    body = {
+      id,
+      title,
+      priority: document.getElementById('modal-task-priority').value,
+      status:   document.getElementById('modal-task-status').value,
+      due_date: document.getElementById('modal-task-due').value.trim(),
+      notes:    document.getElementById('modal-task-notes').value.trim(),
+    };
+  } else {
+    const content = document.getElementById('modal-thought-content').value.trim();
+    if (!content) { document.getElementById('modal-thought-content').focus(); return; }
+    body = {
+      id,
+      content,
+      tags: document.getElementById('modal-thought-tags').value,
+    };
+  }
+
+  try {
+    const url = type === 'task' ? '/api/update_task' : '/api/update_thought';
+    const r   = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (data.error) { alert('Error: ' + data.error); return; }
+    closeModal();
+    fetchBrainState();
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+async function deleteModal() {
+  const { type, id } = modalState;
+  if (!confirm(`Delete this ${type}? This cannot be undone.`)) return;
+
+  try {
+    const url = type === 'task' ? '/api/delete_task' : '/api/delete_thought';
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    closeModal();
+    fetchBrainState();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('edit-modal').style.display !== 'none')
+    closeModal();
+});
+
+// ── Poll intervals ─────────────────────────────────────────────────────────────
+// Reduced from ~115 req/min to ~13 req/min to prevent self-throttling.
+// Manual refresh button triggers refreshAll() for instant update.
+fetchSystem();
+fetchData();
+fetchBrainState();
+fetchLog();
+fetchServices();
+setInterval(fetchSystem,     10000);  // System stats every 10s  (was 2s)
+setInterval(fetchData,       15000);  // Bot metrics every 15s   (was 3s)
+setInterval(fetchBrainState, 30000);  // Brain state every 30s   (was 10s)
+setInterval(fetchLog,        10000);  // Journal log every 10s   (was 5s)
+setInterval(fetchServices,   60000);  // Services every 60s      (was 15s)
+
+function refreshAll() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) { btn.textContent = '⟳ ...'; btn.disabled = true; }
+  Promise.all([fetchSystem(), fetchData(), fetchBrainState(), fetchLog(), fetchServices()])
+    .finally(() => {
+      if (btn) { btn.textContent = '⟳ REFRESH'; btn.disabled = false; }
+    });
+}
+
+// Fill footer IP from config
+fetch('/api/config').then(r => r.json()).then(cfg => {
+  if (cfg.server_ip) {
+    document.getElementById('footer-ip').textContent = cfg.server_ip + ':8080';
+  }
+}).catch(() => {});
+
+// ── Transmission log ───────────────────────────────────────────────────────────
+function renderExchanges(exchanges) {
+  const el = document.getElementById('exchange-list');
+  if (!exchanges || exchanges.length === 0) {
+    el.innerHTML = '<div class="brain-empty">NO TRANSMISSIONS YET</div>';
+    return;
+  }
+
+  el.innerHTML = [...exchanges].reverse().map((ex, i) => {
+    const modelBadge = ex.model === 'gemini'
+      ? '<span class="log-badge gemini">⚡G</span>'
+      : '<span class="log-badge claude">🧠C</span>';
+
+    const ms = ex.elapsed_ms || 0;
+    const timingClass = ms > 5000 ? 'slow' : '';
+    const timingLabel = ms > 0 ? (ms > 1000 ? (ms/1000).toFixed(1)+'s' : ms+'ms') : '--';
+
+    const toolChain = (ex.tool_chain || []).map(step => `
+      <div class="tool-step">
+        <span class="tool-step-name">→ ${escHtml(step.name)}</span>
+        <div class="tool-step-details">
+          <div class="tool-step-input">IN: ${escHtml(step.input_summary || '')}</div>
+          <div class="tool-step-result">OUT: ${escHtml(step.result_summary || '')}</div>
+        </div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="exchange-card">
+        <div class="exchange-header" onclick="toggleExchange(${i})">
+          <div class="exchange-meta">
+            ${modelBadge}
+            <span class="exchange-prompt">${escHtml(ex.prompt || '')}</span>
+          </div>
+          <div class="exchange-right">
+            <span class="timing-pill ${timingClass}">${timingLabel}</span>
+            <span class="exchange-time">${ex.timestamp || ex.time || ''}</span>
+            <span class="expand-arrow" id="arrow-${i}">▶</span>
+          </div>
+        </div>
+        <div class="exchange-body" id="exchange-body-${i}">
+          <div class="exchange-section">
+            <div class="ex-label">PROMPT</div>
+            <div class="ex-text prompt">${escHtml(ex.prompt || '')}</div>
+          </div>
+          ${toolChain ? `
+          <div class="exchange-section">
+            <div class="ex-label">TOOL CHAIN</div>
+            <div class="tool-chain">${toolChain}</div>
+          </div>` : ''}
+          <div class="exchange-section">
+            <div class="ex-label">RESPONSE</div>
+            <div class="ex-text response">${escHtml(ex.response || '')}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleExchange(i) {
+  const body = document.getElementById('exchange-body-' + i);
+  const arrow = document.getElementById('arrow-' + i);
+  if (body.classList.contains('open')) {
+    body.classList.remove('open');
+    arrow.textContent = '▶';
+  } else {
+    body.classList.add('open');
+    arrow.textContent = '▼';
+  }
+}
+
+// ── Brain state ────────────────────────────────────────────────────────────────
+async function fetchBrainState() {
+  try {
+    const [tr, ts] = await Promise.all([
+      fetch('/api/thoughts').then(r => r.json()),
+      fetch('/api/tasks').then(r => r.json()),
+    ]);
+
+    // Store all data for modal pre-fill
+    (tr.thoughts || []).forEach(t => { brainData.thoughts[t.id] = t; });
+    (ts.tasks    || []).forEach(t => { brainData.tasks[t.id]    = t; });
+
+    // Thoughts
+    const thoughtsEl = document.getElementById('thoughts-list');
+    const thoughts = (tr.thoughts || []).slice(-6).reverse();
+    if (thoughts.length === 0) {
+      thoughtsEl.innerHTML = '<div class="brain-empty">EMPTY</div>';
+    } else {
+      thoughtsEl.innerHTML = thoughts.map(t => `
+        <div class="brain-item thought" onclick="openEditModal('thought', ${t.id}, brainData.thoughts[${t.id}])">
+          <div class="brain-item-content">
+            <div>${escHtml(t.content || '')}</div>
+            ${t.tags && t.tags.length ? `<div class="brain-tag">${t.tags.map(x => '#'+x).join(' ')}</div>` : ''}
+          </div>
+          <div class="brain-item-actions">
+            <button class="brain-btn" onclick="event.stopPropagation(); openEditModal('thought', ${t.id}, brainData.thoughts[${t.id}])">✏</button>
+            <button class="brain-btn del" onclick="event.stopPropagation(); quickDelete('thought', ${t.id})">✕</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Tasks
+    const tasksEl = document.getElementById('tasks-list');
+    const tasks = (ts.tasks || []).filter(t => t.status !== 'done').slice(0, 6);
+    if (tasks.length === 0) {
+      tasksEl.innerHTML = '<div class="brain-empty">ALL CLEAR ✓</div>';
+    } else {
+      tasksEl.innerHTML = tasks.map(t => `
+        <div class="brain-item task ${t.priority || ''}" onclick="openEditModal('task', ${t.id}, brainData.tasks[${t.id}])">
+          <div class="brain-item-content">
+            <div>${escHtml(t.title || '')}</div>
+            <div class="brain-tag">${(t.priority || 'low').toUpperCase()}${t.due_date ? ' · ' + t.due_date : ''}</div>
+          </div>
+          <div class="brain-item-actions">
+            <button class="brain-btn" onclick="event.stopPropagation(); openEditModal('task', ${t.id}, brainData.tasks[${t.id}])">✏</button>
+            <button class="brain-btn del" onclick="event.stopPropagation(); quickDelete('task', ${t.id})">✕</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Update badge
+    const tc = tr.thoughts ? tr.thoughts.length : 0;
+    const tk = ts.tasks ? ts.tasks.filter(x => x.status !== 'done').length : 0;
+    document.getElementById('brain-counts').textContent = `${tc} thoughts · ${tk} tasks`;
+
+  } catch(e) {}
+}
+
+async function quickDelete(type, id) {
+  if (!confirm(`Delete this ${type}?`)) return;
+  const url = type === 'task' ? '/api/delete_task' : '/api/delete_thought';
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    fetchBrainState();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+
+// ── Heartbeat canvas ───────────────────────────────────────────────────────────
+// Each active service gets a tiny ECG-style heartbeat drawn on a canvas.
+// The waveform is pre-computed and scrolled left every frame.
+const heartbeatWaves = {};  // service_name → {canvas, ctx, offset, active}
+
+function getHeartbeatPath(W, H) {
+  // One ECG cycle: flat → sharp spike → flat
+  return [
+    [0,      H*0.5],
+    [W*0.3,  H*0.5],
+    [W*0.38, H*0.5],
+    [W*0.42, H*0.1],
+    [W*0.46, H*0.9],
+    [W*0.50, H*0.5],
+    [W*0.54, H*0.5],
+    [W*1.0,  H*0.5],
+  ];
+}
+
+function drawHeartbeat(canvas, active) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width  = canvas.offsetWidth  || 60;
+  const H = canvas.height = canvas.offsetHeight || 24;
+
+  ctx.clearRect(0, 0, W, H);
+  if (!active) return;
+
+  // Animate: shift the wave left based on time
+  const t = (Date.now() / 600) % 1;
+  const pts = getHeartbeatPath(W, H);
+
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => {
+    // Shift x position based on t for scrolling effect
+    const sx = ((x / W - t + 2) % 1) * W;
+    i === 0 ? ctx.moveTo(sx, y) : ctx.lineTo(sx, y);
+  });
+  ctx.strokeStyle = '#39ff8a';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#39ff8a';
+  ctx.shadowBlur = 3;
+  ctx.stroke();
+}
+
+// Animate all heartbeat canvases
+function animateHeartbeats() {
+  document.querySelectorAll('.svc-heartbeat').forEach(canvas => {
+    const active = canvas.dataset.active === 'true';
+    drawHeartbeat(canvas, active);
+  });
+  requestAnimationFrame(animateHeartbeats);
+}
+requestAnimationFrame(animateHeartbeats);
+
+// ── Fetch services ─────────────────────────────────────────────────────────────
+async function fetchServices() {
+  try {
+    const r = await fetch('/api/services');
+    const d = await r.json();
+    const services = d.services || [];
+
+    const el = document.getElementById('svc-list');
+    if (services.length === 0) {
+      el.innerHTML = '<div class="svc-row inactive"><div class="svc-indicator inactive"></div><span class="svc-name">No services found</span><span></span><span></span></div>';
+      return;
+    }
+
+    el.innerHTML = services.map((svc, i) => {
+      const state = svc.active ? 'active' : (svc.state === 'failed' ? 'failed' : 'inactive');
+      return `
+        <div class="svc-row ${state}">
+          <div class="svc-indicator ${state}"></div>
+          <span class="svc-name">${escHtml(svc.display)}</span>
+          <span class="svc-uptime">${escHtml(svc.uptime || '')}</span>
+          <span class="svc-state ${state}">${state.toUpperCase()}</span>
+          <canvas class="svc-heartbeat" data-active="${svc.active}" id="hb-${i}"></canvas>
+        </div>
+      `;
+    }).join('');
+
+  } catch(e) {}
+}
+
+</script>
+</body>
+</html>

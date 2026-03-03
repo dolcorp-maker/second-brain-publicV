@@ -1,0 +1,36 @@
+# Claude Code session files — never commit
+.claude/
+
+# Secrets — never commit these
+.env
+token.json
+credentials.json
+
+# Python noise
+__pycache__/
+*.pyc
+*.pyo
+venv/
+*.egg-info/
+
+# Runtime data — auto-created on first run, not version controlled
+data/*.json
+data/*.log
+data/history/
+data/backup.log
+data/events.json
+
+# Generated media — excluded, keep the dirs via .gitkeep
+data/voice/*
+data/videos/*
+data/gifs/*
+!data/voice/.gitkeep
+!data/videos/.gitkeep
+!data/gifs/.gitkeep
+
+# Logs
+*.log
+
+# macOS metadata
+.DS_Store
+**/.DS_Store

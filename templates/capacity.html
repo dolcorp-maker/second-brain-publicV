@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Second Brain · At Capacity</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #060d14;
+      color: #8ab4c8;
+      font-family: 'Share Tech Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .box {
+      text-align: center;
+      border: 1px solid #ff444466;
+      background: #0a1520;
+      padding: 48px 56px;
+      border-radius: 4px;
+      max-width: 420px;
+    }
+    .icon  { font-size: 40px; margin-bottom: 20px; }
+    .title { font-size: 14px; letter-spacing: 4px; color: #ff4444; margin-bottom: 12px; }
+    .msg   { font-size: 11px; letter-spacing: 1px; color: #5a7a8a; line-height: 1.7; margin-bottom: 28px; }
+    .btn {
+      display: inline-block;
+      border: 1px solid #3a5a6a;
+      color: #8ab4c8;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      padding: 8px 24px;
+      text-decoration: none;
+      border-radius: 2px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn:hover { border-color: #00d4c8; color: #00d4c8; }
+    .counter { font-size: 10px; color: #3a5a6a; margin-top: 20px; letter-spacing: 1px; }
+  </style>
+  <script>
+    // Auto-retry after 30 seconds
+    let secs = 30;
+    function tick() {
+      document.getElementById('countdown').textContent = secs;
+      if (secs <= 0) { window.location.href = '/'; return; }
+      secs--;
+      setTimeout(tick, 1000);
+    }
+    window.onload = tick;
+  </script>
+</head>
+<body>
+  <div class="box">
+    <div class="icon">⛔</div>
+    <div class="title">AT CAPACITY</div>
+    <div class="msg">
+      The dashboard has reached its maximum of 4 concurrent external sessions.<br><br>
+      Sessions expire after 30 minutes of inactivity.<br>
+      Please try again shortly.
+    </div>
+    <a href="/" class="btn">⟳ TRY AGAIN</a>
+    <div class="counter">Auto-retry in <span id="countdown">30</span>s</div>
+  </div>
+</body>
+</html>

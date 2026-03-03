@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Second Brain — Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background: #060d1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .login-box {
+      background: #0a1020;
+      border: 1px solid #1a2a4a;
+      border-radius: 8px;
+      padding: 40px;
+      width: 320px;
+      text-align: center;
+    }
+    .title {
+      color: #39ff8a;
+      font-size: 18px;
+      letter-spacing: 3px;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      color: #3a4a6a;
+      font-size: 10px;
+      letter-spacing: 2px;
+      margin-bottom: 30px;
+    }
+    input[type=password] {
+      width: 100%;
+      background: #060d1a;
+      border: 1px solid #1a2a4a;
+      border-radius: 4px;
+      color: #c8d8f0;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      outline: none;
+    }
+    input[type=password]:focus { border-color: #39ff8a; }
+    button {
+      width: 100%;
+      background: rgba(57,255,138,0.08);
+      border: 1px solid #39ff8a;
+      border-radius: 4px;
+      color: #39ff8a;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 2px;
+      padding: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover { background: rgba(57,255,138,0.15); }
+    .error {
+      color: #ff4466;
+      font-size: 10px;
+      margin-top: 10px;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <div class="title">⚡ SECOND BRAIN</div>
+    <div class="subtitle">MISSION CONTROL · AUTHENTICATE</div>
+    <form method="POST">
+      <input type="password" name="password" placeholder="Enter password" autofocus/>
+      <button type="submit">ENTER →</button>
+      {% if error %}
+      <div class="error">⚠ {{ error }}</div>
+      {% endif %}
+    </form>
+  </div>
+</body>
+</html>
