@@ -8,70 +8,28 @@ import json
 import logging
 import time
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 import os
-
-_TIMEZONE   = os.getenv("TIMEZONE", "UTC")
-_USER_CITY  = os.getenv("USER_CITY", "your city")
-_tz         = ZoneInfo(_TIMEZONE)
-
-# ── Feature flags ──────────────────────────────────────────────────────────────
-# Loaded once at startup. Set to false in .env to disable a feature group.
-# Disabled tools are excluded from the AI tool list entirely.
-def _flag(name: str) -> bool:
-    return os.getenv(name, "true").lower() == "true"
-
-ENABLED_TOOLS = {
-    "google":   _flag("ENABLE_GOOGLE"),
-    "voice":    _flag("ENABLE_VOICE"),
-    "maccabi":  _flag("ENABLE_MACCABI"),
-    "video":    _flag("ENABLE_VIDEO"),
-}
-
-# Maps each tool name to its feature flag key
-_TOOL_FLAGS = {
-    "get_calendar_events":      "google",
-    "add_calendar_event":       "google",
-    "get_todays_google_events": "google",
-    "get_unread_emails":        "google",
-    "get_google_tasks":         "google",
-    "add_google_task":          "google",
-    "get_maccabi_matches":      "maccabi",
-    "generate_video_gif":       "video",
-}
 import anthropic
 from google import genai
 from google.genai import types
 from tools import thoughts, tasks, notes
 from tools.search import get_weather, web_search
+from tools.maccabi import get_maccabi_matches
 from tools.metrics import record_message, update_weather, update_next_match
+from tools.google_services import (
+    get_calendar_events, add_calendar_event, get_todays_google_events,
+    get_unread_emails, get_google_tasks, add_google_task,
+)
 from tools.reminders import add_reminder, list_reminders, cancel_reminder, parse_reminder_due
+from tools.video_generator import generate_video_gif
 from tools.maps import build_maps_link
-
-if ENABLED_TOOLS["maccabi"]:
-    from tools.maccabi import get_maccabi_matches
-else:
-    get_maccabi_matches = None
-
-if ENABLED_TOOLS["google"]:
-    from tools.google_services import (
-        get_calendar_events, add_calendar_event, get_todays_google_events,
-        get_unread_emails, get_google_tasks, add_google_task,
-    )
-else:
-    get_calendar_events = add_calendar_event = get_todays_google_events = None
-    get_unread_emails = get_google_tasks = add_google_task = None
-
-if ENABLED_TOOLS["video"]:
-    from tools.video_generator import generate_video_gif
-else:
-    generate_video_gif = None
-
+from tools.image_analyzer import analyze_photo
+from tools.image_generator import generate_image
 from router import classify_message
 
 claude_client = anthropic.Anthropic()
@@ -82,6 +40,10 @@ gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 # as a fallback to retrieve the path after Gemini generates a GIF.
 _pending_gif_path: str | None = None
 
+# Image bytes produced by the last generate_image call.
+# Stored here so main.py can send them as a Telegram photo.
+_pending_image_bytes: bytes | None = None
+
 
 def consume_pending_gif_path() -> str | None:
     """Return and clear the pending GIF path (thread-safe enough for single-user bot)."""
@@ -89,7 +51,14 @@ def consume_pending_gif_path() -> str | None:
     path, _pending_gif_path = _pending_gif_path, None
     return path
 
-SYSTEM_PROMPT = f"""
+
+def consume_pending_image_bytes() -> bytes | None:
+    """Return and clear the pending image bytes."""
+    global _pending_image_bytes
+    data, _pending_image_bytes = _pending_image_bytes, None
+    return data
+
+SYSTEM_PROMPT = """
 You are a personal second-brain assistant, available 24/7 via Telegram.
 Your job is to help the user organize their thoughts, manage tasks, schedule events,
 and answer questions about the world using web search and weather tools.
@@ -116,8 +85,8 @@ When the user asks about their schedule, calendar, or events — use get_todays_
 or get_calendar_events to check their Google Calendar.
 When the user wants to add an event, use add_calendar_event to add it to Google Calendar.
 NEVER ask the user for the current date — always infer it from the current date provided below.
-The user is based in {_USER_CITY} (timezone: {_TIMEZONE}).
-Default to {_USER_CITY} for weather queries unless another city is specified.
+The user is based in Tel Aviv, Israel (timezone: Asia/Jerusalem).
+Default to Tel Aviv for weather queries unless another city is specified.
 
 When the user asks to make a gif or video:
 - SHORT request (fewer than 30 words): propose exactly 2 creative directions as short bullet
@@ -134,7 +103,7 @@ CLAUDE_TOOLS = [
     {"name": "list_tasks", "description": "List tasks, optionally filtered by status and/or priority.", "input_schema": {"type": "object", "properties": {"status": {"type": "string", "enum": ["pending", "in_progress", "done"]}, "priority": {"type": "string", "enum": ["low", "medium", "high"]}}}},
     {"name": "update_task", "description": "Update an existing task — change its title, status, priority, due date, or notes. Use task_id from list_tasks.", "input_schema": {"type": "object", "properties": {"task_id": {"type": "integer"}, "title": {"type": "string"}, "status": {"type": "string", "enum": ["pending", "in_progress", "done"]}, "priority": {"type": "string", "enum": ["low", "medium", "high"]}, "due_date": {"type": "string"}, "notes": {"type": "string"}}, "required": ["task_id"]}},
     {"name": "delete_task", "description": "Permanently delete a task by its ID. Use when the user says 'delete task', 'remove task', 'cancel task'. Requires the task_id — call list_tasks first if you don't know it.", "input_schema": {"type": "object", "properties": {"task_id": {"type": "integer"}}, "required": ["task_id"]}},
-    {"name": "get_weather", "description": f"Get current weather and forecast. Default to {_USER_CITY}.", "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}},
+    {"name": "get_weather", "description": "Get current weather and forecast. Default to Tel Aviv.", "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}},
     {"name": "web_search", "description": "Search the web for current information, news, or facts.", "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "max_results": {"type": "integer"}}, "required": ["query"]}},
     {"name": "get_maccabi_matches", "description": "Get Maccabi Haifa FC upcoming matches and recent results.", "input_schema": {"type": "object", "properties": {}}},
     {"name": "get_calendar_events", "description": "Fetch upcoming events from Google Calendar.", "input_schema": {"type": "object", "properties": {"days_ahead": {"type": "integer"}, "max_results": {"type": "integer"}}}},
@@ -157,12 +126,8 @@ CLAUDE_TOOLS = [
     {"name": "delete_note", "description": "Permanently delete a note by its ID. Requires note_id from get_notes or search_notes.", "input_schema": {"type": "object", "properties": {"note_id": {"type": "integer"}}, "required": ["note_id"]}},
     # ── Navigation ─────────────────────────────────────────────────────────────
     {"name": "navigate_maps", "description": "Build a Google Maps navigation deep link for driving directions. Use when the user mentions a trip, wants to navigate somewhere, needs directions, or says they need to be at a place by a certain time. Handles Hebrew and English. IMPORTANT: always build the most complete destination string before calling — include street number + street name + city + country. If address parts arrive across multiple messages, combine them. If city or country is missing, infer from context (user is in Israel by default). Examples: 'Brandeis 33 Hadera' → 'Brandeis 33, Hadera, Israel'; 'ברנדייס 33 חדרה' → 'ברנדייס 33, חדרה, ישראל'; 'I need to be in Haifa by 12' → 'Haifa, Israel'. Do NOT ask the user for more details — infer the best address and call the tool.", "input_schema": {"type": "object", "properties": {"destination": {"type": "string", "description": "Where the user wants to go, e.g. 'Hadera, Israel', 'Jerusalem', 'Ben Gurion Airport'"}, "origin": {"type": "string", "description": "Where to leave from. Leave empty to use home address from config. Only set if user explicitly says 'from [place]' or 'leave from [place]'."}, "arrival_time": {"type": "string", "description": "If user says 'by [time]' or 'arrive by [time]' or 'I need to be there at [time]' — pass that time here, e.g. '12:00', 'noon'."}, "departure_time": {"type": "string", "description": "If user says 'leave at [time]' or 'depart at [time]' or 'around [time]' — pass that time here."}}, "required": ["destination"]}},
-]
-
-# Filter out tools whose feature flag is disabled
-CLAUDE_TOOLS = [
-    t for t in CLAUDE_TOOLS
-    if ENABLED_TOOLS.get(_TOOL_FLAGS.get(t["name"], ""), True)
+    # ── Image generation ───────────────────────────────────────────────────────
+    {"name": "generate_image", "description": "Generate an image from a text description using DALL-E 3. Use when the user says 'generate image', 'create image', 'draw', 'make an image', 'imagine', etc. Takes ~5-10 seconds.", "input_schema": {"type": "object", "properties": {"prompt": {"type": "string", "description": "What to generate, e.g. 'a sunset over Tel Aviv skyline, photorealistic'"}}, "required": ["prompt"]}},
 ]
 
 GEMINI_TOOLS = types.Tool(
@@ -175,8 +140,8 @@ GEMINI_TOOLS = types.Tool(
 
 def _get_system_prompt_with_date() -> str:
     """Inject the current date/time into the system prompt on every call."""
-    current_dt = datetime.now(_tz).strftime("%A, %B %d %Y, %H:%M")
-    return SYSTEM_PROMPT + f"\n\nCurrent date and time: {current_dt} ({_TIMEZONE} timezone)"
+    current_dt = datetime.now().strftime("%A, %B %d %Y, %H:%M")
+    return SYSTEM_PROMPT + f"\n\nCurrent date and time: {current_dt} (Asia/Jerusalem timezone)"
 
 
 def _handle_set_reminder(tool_input: dict) -> dict:
@@ -188,9 +153,6 @@ def _handle_set_reminder(tool_input: dict) -> dict:
 
 
 def run_tool(tool_name: str, tool_input: dict):
-    flag_key = _TOOL_FLAGS.get(tool_name)
-    if flag_key and not ENABLED_TOOLS.get(flag_key, True):
-        return {"error": f"Tool '{tool_name}' is disabled (ENABLE_{flag_key.upper()}=false in .env)."}
     dispatch = {
         "add_thought":              lambda: thoughts.add_thought(**tool_input),
         "list_thoughts":            lambda: thoughts.list_thoughts(**tool_input),
@@ -218,14 +180,16 @@ def run_tool(tool_name: str, tool_input: dict):
         "update_note":              lambda: notes.update_note(**tool_input),
         "delete_note":              lambda: notes.delete_note(**tool_input),
         "navigate_maps":            lambda: build_maps_link(**tool_input),
+        "generate_image":           lambda: generate_image(**tool_input),
     }
     fn = dispatch.get(tool_name)
     if fn:
+        logger.info(f"[TOOL→] {tool_name} | {_summarise(tool_input)}")
         result = fn()
         if isinstance(result, dict) and "error" in result:
-            logger.warning(f"[TOOL ERROR] {tool_name}: {result['error']}")
+            logger.warning(f"[TOOL←] {tool_name} ERROR | {result['error']}")
         else:
-            logger.debug(f"[TOOL] {tool_name} ok")
+            logger.info(f"[TOOL←] {tool_name} OK | {_summarise(result)}")
         if tool_name == "get_weather" and isinstance(result, dict) and "current" in result:
             update_weather(result)
         if tool_name == "get_maccabi_matches" and isinstance(result, dict) and "next_match" in result:
@@ -233,6 +197,11 @@ def run_tool(tool_name: str, tool_input: dict):
         if tool_name == "generate_video_gif" and isinstance(result, dict) and result.get("success"):
             global _pending_gif_path
             _pending_gif_path = result.get("path")
+        if tool_name == "generate_image" and isinstance(result, dict) and "image_bytes" in result:
+            global _pending_image_bytes
+            _pending_image_bytes = result["image_bytes"]
+            # Return a JSON-serializable summary — the actual bytes are in _pending_image_bytes
+            return {"success": True, "message": f"Image generated. Revised prompt: {result.get('revised_prompt', '')[:120]}"}
         return result
     logger.warning(f"[TOOL ERROR] unknown tool requested: {tool_name}")
     return {"error": f"Unknown tool: {tool_name}"}
@@ -378,10 +347,49 @@ def process_with_claude(user_message: str, conversation_history: list) -> tuple[
             return reply, conversation_history
 
 
+# ── GPT — image generation ─────────────────────────────────────────────────────
+def process_with_gpt(user_message: str, conversation_history: list) -> tuple[str, list]:
+    """Route image-generation requests to DALL-E 3 via generate_image()."""
+    t_start = time.time()
+    result = generate_image(user_message)
+    elapsed_ms = int((time.time() - t_start) * 1000)
+
+    if "error" in result:
+        reply = f"⚠️ Image generation failed: {result['error']}"
+    else:
+        global _pending_image_bytes
+        _pending_image_bytes = result["image_bytes"]
+        short_prompt = result.get("revised_prompt", "")[:100]
+        reply = f"🎨 Here's your image!\n_{short_prompt}_" if short_prompt else "🎨 Here's your image!"
+
+    conversation_history.append({"role": "user", "content": user_message})
+    conversation_history.append({"role": "assistant", "content": reply})
+
+    logger.info(f"[GPT] image_gen | {elapsed_ms}ms | {len(reply)}chars")
+    record_message(
+        text=user_message, model="gpt", tool="generate_image",
+        response=reply, tool_chain=[], elapsed_ms=elapsed_ms,
+    )
+    return reply, conversation_history
+
+
+def process_photo(image_bytes: bytes, caption: str = "") -> str:
+    """
+    Analyze a photo with GPT-4o vision and return a text description.
+    Called directly from main.py handle_photo() — does not go through routing.
+    """
+    result = analyze_photo(image_bytes, caption)
+    if "error" in result:
+        return f"⚠️ Couldn't analyze the image: {result['error']}"
+    return result["result"]
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
-def process_message(user_message: str, conversation_history: list) -> tuple[str, list]:
-    complexity = classify_message(user_message)
-    if complexity == "simple":
+def process_message(user_message: str, conversation_history: list, has_photo: bool = False) -> tuple[str, list]:
+    route = classify_message(user_message, has_photo=has_photo)
+    if route == "simple":
         return process_with_gemini(user_message, conversation_history)
+    elif route == "gpt":
+        return process_with_gpt(user_message, conversation_history)
     else:
         return process_with_claude(user_message, conversation_history)

@@ -4,6 +4,32 @@ Newest entry at the top. One section per session. Bullets only.
 
 ---
 
+## 2026-03-04 — OpenAI feature expansion: vision, image generation, TTS upgrade
+
+- **Added `tools/image_analyzer.py`** — GPT-4o vision, 3 modes auto-detected from caption: `food` (nutrition facts, calories, macros), `plant` (EN + HE name, edible/toxic, care tips), `general` (factual description). Pillow pre-compression to ≤1280px before upload.
+- **Added `tools/image_generator.py`** — DALL-E 3 image generation, two-step pipeline: prompt enhancement via GPT-4o-mini → DALL-E 3 (standard, 1024×1024, ~$0.04/image). Returns bytes for direct Telegram send.
+- **Upgraded `tools/tts.py`** — replaced gTTS with OpenAI TTS (`tts-1` model, `nova` voice). Much better quality, handles Hebrew + English natively. Added `text_to_speech()` function returning mp3 bytes. Added Hebrew speak triggers: `תקרא לי`, `תגיד`.
+- **Voice guardrail** — voice input (`source="voice"`) now auto-reads back the response without requiring explicit speak keywords. Error messages (starting with ⚠️) are skipped.
+- **Updated `router.py`** — added GPT tier as third routing target. `classify_message(text, has_photo=False)` now returns `"gpt"` for photo messages and image-generation keywords (`generate image`, `create image`, `draw`, `imagine`, `תצייר`, `תיצור תמונה`). Returns `"gemini"` | `"claude"` | `"gpt"`.
+- **Updated `agent.py`** — added `process_photo(image_bytes, caption)` (GPT-4o vision, called directly from main.py); `process_with_gpt()` for DALL-E 3 image gen; `_pending_image_bytes` + `consume_pending_image_bytes()`; `generate_image` added to `CLAUDE_TOOLS` so Claude can also trigger image gen via tool call.
+- **Updated `main.py`** — added `handle_photo()` handler (photo → GPT-4o analysis, status message pattern); registered `filters.PHOTO` handler; pending image bytes sent as Telegram photo after text response.
+
+---
+
+## 2026-03-04 — Bug fixes + brainflow monitor
+
+- **`brainflow.py`** — new real-time flow monitor: colorized per-request view (routing decision, tool inputs/outputs, model summary). `brainflow` alias added to `~/.zshrc`.
+- **`agent.py` `run_tool`** — changed tool-OK log `DEBUG` → `INFO`; added `[TOOL→]` (input) and `[TOOL←]` (result) log lines — every tool call now visible in `bot.log` with full input/result summaries.
+- **`router.py` Bug 1** — moved `list/show/cancel/delete reminders` + 4 missing phrases (`reminder in`, `add a reminder`, `new reminder`, `my reminders`) → `FORCE_CLAUDE`. Gemini was silently failing all of these.
+- **`router.py` Bug 4** — added `animate` to verb group in early GIF/video check so "animate a cat..." routes to Claude.
+- **`main.py` Bug 2** — voice handler `transcribe_status` message now edited in-place across all 3 exit paths — no more orphaned "transcribing..." messages.
+- **`tools/reminders.py` Bug 3** — inlined `_parse_date`/`_parse_time`; removed hidden `google_services` dependency.
+- **`tools/video_generator.py` Bug 5** — timestamp added to GIF/MP4 filenames — prevents silent overwrite on repeated identical prompts.
+- **`tools/gif_generator.py` Bug 6** — deleted dead code (Imagen frame-stitcher, superseded by Veo 3).
+- Adopted `IN_PROGRESS.md` as session working memory.
+
+---
+
 ## 2026-03-03 — Bug fixes: routing, voice UX, reminders dependency, GIF collision
 
 **`router.py` — Bug 1 (reminder routing regression):**

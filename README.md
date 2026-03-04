@@ -1,275 +1,161 @@
-# 🧠 Second Brain Bot
+# 🧠 Second Brain Bot — Setup Guide
 
-A personal AI assistant that lives in your Telegram and runs on hardware you own.
-
-The key idea: not every message needs an expensive model. A built-in router classifies each message and sends it to either Gemini (fast, free, handles ~80% of queries) or Claude Sonnet (powerful, used only when it matters). You get smart responses without a smart bill.
-
-It runs 24/7 on any Linux box you have lying around — old laptop, mini PC, VPS. It has 22 tools, a live web dashboard, local voice transcription, Google Calendar/Gmail/Tasks integration, reminders, web search, weather, notes, navigation, and GIF generation.
-
-It's not a product. It's infrastructure for your brain.
+A personal Telegram bot that acts as a 24/7 AI assistant — thoughts, tasks, calendar, reminders, web search, voice, image analysis, and more. Routes messages between Gemini (fast/free) and Claude Sonnet (powerful/paid), with GPT-4o for vision and image generation.
 
 ---
 
-> **Heads up:** This project runs as my daily driver but has not yet been
-> tested as a fresh install on a clean machine. Setup guides are written
-> carefully but may have rough edges. If something doesn't work, open a
-> Discussion — I'll try to fix it fast.
-
----
-
-## What it does
-
-| Category | Tools |
-|---|---|
-| **Memory** | Save thoughts, search them, tag them |
-| **Tasks** | Add, update, prioritize, complete |
-| **Calendar** | Read and write Google Calendar events |
-| **Email** | Search and read Gmail |
-| **Reminders** | Time-based push notifications via Telegram |
-| **Web** | Brave Search, real-time results |
-| **Weather** | Current + forecast via OpenWeather |
-| **Voice** | Transcribe voice messages locally (Whisper, no API cost) |
-| **Media** | Generate GIFs via Google Veo 3 |
-| **Navigation** | Google Maps deep links, no API needed |
-| **Dashboard** | Live web UI with metrics, logs, task management |
-
-22 tools total. You can enable/disable any of them via config flags — no need to set up Google OAuth if you just want a fast personal search + notes bot.
-
----
-
-## Screenshots
-
-**The bot in action — Telegram conversation**
-![Telegram](screenshots/telegram_bot.png)
-
-**Help menu — all available commands**
-![Help](screenshots/action_help.png)
-
-**Status check**
-![Status](screenshots/action_status.png)
-
-**Web dashboard — live metrics and task management**
-![Dashboard](screenshots/dashbaord.png)
-
-**GIF generation**
-![GIF creator](screenshots/gif_creator.png)
-
----
-
-## How the routing works
-
-This is the core idea. Every message you send gets classified before anything else happens.
+## 📁 Project Structure
 
 ```
-You send a message
-        ↓
-   router.py classifies it
-        ↓
-  ┌─────────────────────────────┐
-  │  FORCE_CLAUDE list?         │ ← always Claude: calendar writes,
-  │  Complex keywords?          │   email, GIF generation
-  │  Message > 30 words?        │
-  └──────────┬──────────────────┘
-             │
-      yes ───┤─── no
-             │         │
-          Claude     Gemini
-          Sonnet    Flash Lite
-         (smart,    (fast, free,
-        powerful)   handles ~80%)
-             │         │
-             └────┬────┘
-                  ↓
-            tools execute
-                  ↓
-          response → Telegram
+second-brain-bot/
+├── main.py               ← Bot entry point (Telegram handlers)
+├── agent.py              ← Multi-model routing + tool dispatch
+├── router.py             ← Message classifier (Gemini / Claude / GPT)
+├── scheduler.py          ← Reminder firing loop (60s tick)
+├── web_dashboard.py      ← Flask dashboard (port 8080)
+├── brainflow.py          ← Dev tool: real-time colored flow monitor
+├── tools/
+│   ├── thoughts.py       ← Capture & search thoughts
+│   ├── tasks.py          ← To-do management
+│   ├── notes.py          ← Categorized notes vault (passwords/keys/api/random)
+│   ├── reminders.py      ← Set/list/cancel reminders
+│   ├── search.py         ← Weather + web search
+│   ├── maps.py           ← Google Maps deep links (no API key)
+│   ├── google_services.py← Calendar / Gmail / Google Tasks (OAuth)
+│   ├── image_analyzer.py ← GPT-4o vision (food/plant/general)
+│   ├── image_generator.py← DALL-E 3 image generation
+│   ├── video_generator.py← Google Veo 3 GIF generation
+│   ├── tts.py            ← OpenAI TTS voice replies (nova voice)
+│   └── transcribe.py     ← faster-whisper voice transcription (local)
+├── data/                 ← Auto-created; stores JSON data files
+├── .env                  ← Your secret keys (YOU create this)
+├── .env.example          ← Template for .env
+└── requirements.txt      ← Python dependencies
 ```
 
-**Three routing rules, checked in order:**
-
-1. **Force list** — certain tools always go to Claude regardless of message length. Google Calendar writes, Gmail, GIF generation. Gemini handles these technically but picks wrong parameters — Claude is more reliable for tool calls that need to be exact.
-
-2. **Keyword classification** — `router.py` scans for signal words. "summarize", "explain", "write", "analyze", "compare" → Claude. "weather", "remind", "search", "task", "add" → Gemini.
-
-3. **Length fallback** — anything over 30 words goes to Claude. Short messages are rarely complex.
-
-In practice: Gemini handles around 80% of daily queries. Claude handles the ones that need to be right. The split keeps costs near zero while giving you full model quality when it matters.
-
-You can tune all of this in `router.py` — the lists are plain Python, easy to read and modify.
-
 ---
 
-## What you need
+## ⚙️ Setup (One-time)
 
-### Required — the core bot works with these
-| Key | Where to get it | Cost |
-|---|---|---|
-| Telegram Bot Token | [@BotFather](https://t.me/BotFather) on Telegram | Free |
-| Anthropic API Key | [console.anthropic.com](https://console.anthropic.com) | Pay per use (~$0.01–0.05/day typical) |
-| Gemini API Key | [aistudio.google.com](https://aistudio.google.com) | Free tier generous |
-
-### Optional — enable the tools you want
-| Key | Tool | Cost |
-|---|---|---|
-| Brave Search API | Web search | Free tier (2000 queries/mo) |
-| OpenWeather API | Weather | Free tier |
-| Google OAuth | Calendar, Gmail, Tasks | Free (setup takes ~15 min) |
-| Google AI Studio key | GIF/video generation (Veo 3) | Pay per use |
-| *(none)* | BONUS - Maccabi Haifa FC match schedule | Free (scrapes official site) |
-
----
-
-## Hardware
-
-Any machine that runs Linux and stays on. Tested on:
-- MacBook Pro 2017 running Ubuntu 22.04 ✅
-- Raspberry Pi 3B+ ✅ (works, just slower)
-- Any VPS ✅
-
-Minimum: 1GB RAM, 4GB disk. The local Whisper model (for voice) needs ~500MB.
-
----
-
-## Setup
-
-### 1. Clone and configure
-
+### Step 1 — Install Python 3.11+
 ```bash
-git clone https://github.com/yourusername/second-brain-bot.git
+python3 --version  # confirm 3.11+
+```
+
+### Step 2 — Clone and install dependencies
+```bash
+git clone <repo-url> second-brain-bot
 cd second-brain-bot
-cp .env.example .env
-nano .env   # fill in your keys
-```
-
-### 2. Run the setup script
-
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-This installs system dependencies (ffmpeg, etc.), creates a Python venv, installs requirements, and runs a health check.
-
-### 3. Enable the tools you want
-
-In your `.env`:
-
-```bash
-# Core (always on)
-ENABLE_CORE=true
-
-# Optional tool groups — set to false to skip
-ENABLE_WEB_SEARCH=true      # needs BRAVE_SEARCH_API_KEY
-ENABLE_WEATHER=true         # needs OPENWEATHER_API_KEY
-ENABLE_GOOGLE=true          # needs Google OAuth setup (see SETUP_GOOGLE.md)
-ENABLE_VOICE=true           # uses local Whisper, no key needed
-ENABLE_MEDIA=false          # needs GEMINI_API_KEY + Veo 3 access
-```
-
-### 4. Start it
-
-```bash
-# Run directly
+python3 -m venv venv
 source venv/bin/activate
-python main.py
-
-# Or install as a system service (runs on boot, auto-restarts)
-./install-service.sh
+pip install -r requirements.txt
 ```
 
-### 5. Optional: web dashboard
+### Step 3 — Create your `.env` file
+```bash
+cp .env.example .env
+```
 
-The dashboard runs at `http://localhost:8080`. To expose it publicly with HTTPS:
-- Get a free domain at [duckdns.org](https://duckdns.org)
-- Install nginx + certbot
-- See `SETUP_DASHBOARD.md` for the full nginx config
+Fill in `.env`:
+```
+TELEGRAM_BOT_TOKEN=        # from @BotFather
+ALLOWED_USER_ID=           # your Telegram user ID (from @userinfobot)
+ANTHROPIC_API_KEY=         # Claude — https://console.anthropic.com
+GEMINI_API_KEY=            # Google AI Studio — https://aistudio.google.com
+OPENAI_API_KEY=            # OpenAI — https://platform.openai.com (vision + TTS + DALL-E)
+BRAVE_SEARCH_API_KEY=      # Brave Search — https://api.search.brave.com
+OPENWEATHER_API_KEY=       # OpenWeatherMap — https://openweathermap.org/api
+DASHBOARD_PASSWORD=        # choose any password for the web dashboard
+FLASK_SECRET_KEY=          # generate: python3 -c "import secrets; print(secrets.token_hex(32))"
+HOME_ADDRESS=              # your home address (used by maps tool)
+USER_CITY=                 # your city for default weather (e.g. London)
+```
+
+### Step 4 — Run the bot
+```bash
+python3 main.py
+```
 
 ---
 
-## Google OAuth setup (if you want Calendar / Gmail / Tasks)
+## 💬 How to Talk to Your Bot
 
-This is the most involved part. Takes about 15 minutes once.
+Speak naturally. Examples:
 
-See **[SETUP_GOOGLE.md](./SETUP_GOOGLE.md)** for the step-by-step.
-
-Short version:
-1. Create a project at [console.cloud.google.com](https://console.cloud.google.com)
-2. Enable Calendar, Gmail, Tasks APIs
-3. Create OAuth 2.0 credentials → download as `credentials.json`
-4. Place in project root
-5. First run will open a browser to authorize → creates `token.json`
+| What you say | What happens |
+|---|---|
+| `Note this: I want to rethink my morning routine` | Saves a thought |
+| `Add task: Review server logs, high priority, due tomorrow` | Creates a task |
+| `Mark task 3 as done` | Updates task status |
+| `Remind me in 2 hours to take a break` | Sets a reminder |
+| `What's on my calendar today?` | Checks Google Calendar |
+| `Schedule team meeting on Friday at 2pm` | Adds calendar event |
+| `What's the weather?` | Current + tomorrow forecast |
+| `Search for latest AI news` | Brave web search |
+| `Save note: GitHub token is abc123` (category: api) | Saves to notes vault |
+| `Navigate to Ben Gurion Airport` | Google Maps deep link |
+| `Make a gif of a cat playing piano` | Veo 3 animated GIF |
+| `Generate image of a sunset over the sea` | DALL-E 3 image |
+| *(send a photo)* | GPT-4o analysis — food / plant / general |
+| *(send a voice note)* | Transcribed + answered + read back aloud |
+| `Read me my tasks` | Lists tasks + speaks reply aloud |
 
 ---
 
-## Keeping it running
+## 🔄 Commands
 
-Once installed as a service:
+| Command | Action |
+|---|---|
+| `/start` | Welcome message + clear memory |
+| `/clear` | Clear conversation history |
+| `/tasks` | Pending & in-progress tasks |
+| `/thoughts` | 10 most recent thoughts |
+| `/reminders` | Pending reminders |
+| `/weather` | Current weather |
+| `/status` | Services + system health |
+| `/restart` | Restart all three services |
+| `/shutdown` | Stop all services |
+
+---
+
+## 🖼 Image Analysis (GPT-4o Vision)
+
+Send any photo to the bot. Mode auto-detected from caption keywords:
+
+| Caption keyword | Mode | Returns |
+|---|---|---|
+| food, eat, calories, meal, dish | `food` | Dish name, calories, macros, key ingredients |
+| plant, flower, tree, leaf, herb | `plant` | EN + Hebrew name, edible/toxic, care guide |
+| *(no keyword / describe)* | `general` | Factual description of objects, colors, any text |
+
+---
+
+## 📂 Your Data
+
+All data lives in `data/`:
+```
+data/thoughts.json   data/tasks.json    data/reminders.json
+data/notes.json      data/metrics.json  data/traces.json
+data/bot.log         data/history/      data/videos/
+```
+
+---
+
+## 🔧 Dev: Real-time Flow Monitor
 
 ```bash
-# Check status
-sudo systemctl status secondbrain
-
-# View logs
-journalctl -u secondbrain -f
-
-# Restart
-sudo systemctl restart secondbrain
+brainflow   # tail bot.log with colored per-request flow view
 ```
 
-The dashboard shows live metrics, recent conversations, tasks, and system health if you have it running.
+Shows routing decisions, tool inputs/outputs, and model timing — one line per step.
 
 ---
 
-## Project structure
+## ❓ Troubleshooting
 
-```
-main.py              — Telegram bot, message handling
-agent.py             — Dual-model routing, tool dispatch
-router.py            — Classifies messages: simple vs complex
-scheduler.py         — Reminder firing loop
-web_dashboard.py     — Flask dashboard server
-tools/               — All 22 tools, one file each
-templates/           — Dashboard HTML
-data/                — Auto-created on first run (JSON storage)
-.env.example         — All config options with explanations
-setup.sh             — One-command setup
-```
-
----
-
-## Customizing
-
-**Add a tool:** Create `tools/your_tool.py` with a `TOOL_DEFINITION` dict and a handler function. Register it in `agent.py`. That's it.
-
-**Change routing:** Edit `router.py` — the `FORCE_CLAUDE`, `COMPLEX_KEYWORDS`, and `SIMPLE_KEYWORDS` lists are easy to read and modify.
-
-**Change the system prompt:** Edit the prompt string in `agent.py`. This is where the bot's personality lives.
-
----
-
-## Cost in practice
-
-Running this as a daily driver:
-- **Gemini** handles ~80% of queries → effectively free
-- **Claude Sonnet** handles ~20% → roughly $0.01–0.05/day for normal use
-- **Voice transcription** → $0 (runs locally via faster-whisper)
-- **Everything else** → free tier APIs
-
-Total: a few dollars a month at most, often less.
-
----
-
-## What this isn't
-
-Not a hosted product. No SaaS. No app. You run it, you own it, your data stays on your machine. The bot only talks to you (enforced via `ALLOWED_USER_ID` in config).
-
----
-
-## License
-
-MIT. Fork it, break it, rebuild it.
-
----
-
-*Built for personal use, made public because it turned out to be genuinely useful infrastructure.*
-
+**"ModuleNotFoundError"** → `pip install -r requirements.txt`
+**"TELEGRAM_BOT_TOKEN is not set"** → Check your `.env` file
+**Bot doesn't respond** → Check `brainstatus` — all three services should be active
+**Voice not working** → `pip install faster-whisper`
+**TTS not working** → Check `OPENAI_API_KEY` in `.env`
+**Image analysis fails** → Check `OPENAI_API_KEY` and that `Pillow` is installed

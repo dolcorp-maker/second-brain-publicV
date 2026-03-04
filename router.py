@@ -1,7 +1,8 @@
 """
 router.py
 
-Classifies messages as 'simple' (Gemini, free) or 'complex' (Claude, paid).
+Classifies messages as 'simple' (Gemini, free), 'complex' (Claude, paid),
+or 'gpt' (GPT-4o, vision + image generation).
 
 Key fix: keyword matching now uses whole-word boundaries via regex,
 so 'hi' won't match inside 'machines', 'this' won't match 'thinking', etc.
@@ -24,6 +25,17 @@ def _matches(keyword: str, text: str) -> bool:
     escaped = re.escape(keyword)
     pattern = r'\b' + escaped + r'\b'
     return bool(re.search(pattern, text))
+
+
+# ── Force GPT-4o for vision and image generation ──────────────────────────────
+# has_photo=True always routes here regardless of text keywords.
+FORCE_GPT_KEYWORDS = [
+    "generate image", "create image", "make an image",
+    "draw ",           # "draw a dragon", "draw me..."
+    "imagine ",        # "imagine a sunset..."
+    "תצייר",           # Hebrew: "draw"
+    "תיצור תמונה",     # Hebrew: "create an image"
+]
 
 
 # ── Force Claude for these — Gemini makes wrong tool choices ──────────────────
@@ -158,45 +170,58 @@ SIMPLE_KEYWORDS = [
 ]
 
 
-def classify_message(message: str) -> str:
+def classify_message(message: str, has_photo: bool = False) -> str:
     """
-    Classify a message as 'simple' (Gemini) or 'complex' (Claude).
+    Classify a message as 'simple' (Gemini), 'complex' (Claude), or 'gpt' (GPT-4o).
 
     Priority:
-    1. FORCE_CLAUDE  — Google services needing precise tool selection
-    2. COMPLEX       — analytical / reasoning tasks
-    3. SIMPLE        — straightforward actions
-    4. Length        — long messages default to Claude
+    0. has_photo=True  — always GPT-4o vision
+    1. FORCE_GPT       — image generation keywords → GPT-4o
+    2. FORCE_CLAUDE    — Google services needing precise tool selection
+    3. GIF/video early — first-10-word catch before length fallback
+    4. COMPLEX         — analytical / reasoning tasks
+    5. SIMPLE          — straightforward actions
+    6. Length          — long messages default to Claude
     """
     msg = message.lower().strip()
 
-    # 0. Early GIF/video check on first 10 words — catches "prepare a gif...", "want a video..."
-    #    before the word-count fallback fires.
+    # 0. Photo attached — always GPT-4o vision
+    if has_photo:
+        logger.info("[ROUTE] gpt-vision (photo)")
+        return "gpt"
+
+    # 1. Image generation keywords → GPT-4o
+    for phrase in FORCE_GPT_KEYWORDS:
+        if phrase in msg:
+            logger.info(f"[ROUTE] gpt-image match='{phrase}'")
+            return "gpt"
+
+    # 2. Early GIF/video check on first 10 words — catches "prepare a gif...", "want a video..."
     first_words = " ".join(msg.split()[:10])
     if (re.search(r'\b(gif|video|animation|animate)\b', first_words)
             and re.search(r'\b(make|create|generate|prepare|give|want|need|get|build|animate)\b', first_words)):
         logger.info("[ROUTE] claude-forced (gif/video in first 10 words)")
         return "complex"
 
-    # 1. Force Claude for Google Calendar / Gmail
+    # 3. Force Claude for Google Calendar / Gmail / reminders / notes etc.
     for phrase in FORCE_CLAUDE:
         if re.search(phrase, msg):
             logger.info(f"[ROUTE] claude-forced match='{phrase}'")
             return "complex"
 
-    # 2. Complex keywords
+    # 4. Complex keywords
     for keyword in COMPLEX_KEYWORDS:
         if _matches(keyword, msg):
             logger.info(f"[ROUTE] claude-complex match='{keyword}'")
             return "complex"
 
-    # 3. Simple keywords
+    # 5. Simple keywords
     for keyword in SIMPLE_KEYWORDS:
         if _matches(keyword, msg):
             logger.info(f"[ROUTE] gemini-simple match='{keyword}'")
             return "simple"
 
-    # 4. Length fallback
+    # 6. Length fallback
     word_count = len(msg.split())
     if word_count > 30:
         logger.info(f"[ROUTE] claude-long words={word_count}")

@@ -29,7 +29,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
-from agent import process_message, consume_pending_gif_path
+from agent import process_message, process_photo, consume_pending_gif_path, consume_pending_image_bytes
 from tools.tts import should_speak, speak_reply
 from tools.comm_trace import new_trace, mark_stage, finish_trace
 from tools.tasks import list_tasks
@@ -237,6 +237,16 @@ async def handle_text_input(
                     read_timeout=60,
                 )
 
+        # Send DALL-E generated image if one was produced this turn
+        image_bytes = consume_pending_image_bytes()
+        if image_bytes:
+            await context.bot.send_chat_action(chat_id=chat_id, action="upload_photo")
+            import io
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=io.BytesIO(image_bytes),
+            )
+
         # Bug #3 fix: split reply into ≤4096-char chunks; edit status_msg with first chunk,
         # send subsequent chunks as new messages (rare — only for very long responses).
         t_send = time.monotonic()
@@ -248,16 +258,11 @@ async def handle_text_input(
         mark_stage(trace, "total", t_total)
         finish_trace(trace, status="ok")
 
-        # If user asked for voice, also send audio as a separate message
-        if should_speak(user_message):
+        # Send voice reply when: user sent a voice note, OR used an explicit speak keyword.
+        # Guard: skip if reply is an error message or too long (speak_reply trims at 500 chars).
+        if (source == "voice" or should_speak(user_message)) and not reply.startswith("⚠️"):
             await context.bot.send_chat_action(chat_id=chat_id, action="upload_voice")
-            success = await speak_reply(reply, chat_id, context.bot)
-            if not success:
-                await update.message.reply_text(
-                    "⚠️ Voice reply failed — make sure gTTS is installed:\n"
-                    "`pip install gtts`",
-                    parse_mode="Markdown"
-                )
+            await speak_reply(reply, chat_id, context.bot)
 
     except Exception as e:
         # Bug #5 fix: exc_info=True logs the full traceback, not just str(e)
@@ -268,6 +273,27 @@ async def handle_text_input(
             await status_msg.edit_text("⚠️ Something went wrong. Please try again.")
         else:
             await update.message.reply_text("⚠️ Something went wrong. Please try again.")
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Analyze a photo sent to the bot using GPT-4o vision."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Sorry, this is a private bot.")
+        return
+
+    status_msg = await update.message.reply_text("🔍 Analyzing your photo...")
+    try:
+        photo = update.message.photo[-1]  # largest available size
+        file = await context.bot.get_file(photo.file_id)
+        image_bytes = bytes(await file.download_as_bytearray())
+        caption = update.message.caption or ""
+
+        response = await asyncio.to_thread(process_photo, image_bytes, caption)
+        await status_msg.edit_text(response)
+    except Exception as e:
+        logger.error(f"handle_photo error for user {user_id}: {e}", exc_info=True)
+        await status_msg.edit_text("⚠️ Couldn't analyze the photo. Please try again.")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -374,7 +400,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/tasks — pending & in\\-progress tasks\n"
         "/thoughts — your 10 most recent thoughts\n"
         "/reminders — pending reminders\n"
-        "/weather — current weather for your city\n"
+        "/weather — current Tel Aviv weather\n"
         "/status — services & system health\n\n"
         "*Memory*\n"
         "/clear — wipe conversation memory\n"
@@ -626,6 +652,7 @@ def main():
     app.add_handler(CommandHandler("status",    status_command))
     app.add_handler(CommandHandler("restart",   restart_services_command))
     app.add_handler(CommandHandler("shutdown",  shutdown_command))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
