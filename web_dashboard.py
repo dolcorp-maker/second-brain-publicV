@@ -2,7 +2,7 @@
 web_dashboard.py
 
 Flask web server that serves the Second Brain dashboard.
-Runs on port 8080. Access at http://<SERVER_IP>:8080
+Runs on port 8080. Access at http://192.168.1.204:8080
 
 Architecture:
 - /              → internal: full dashboard (no login needed on LAN)
@@ -45,18 +45,11 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", os.urandom(24).hex())
 METRICS_FILE = Path("data/metrics.json")
 START_TIME   = time.time()
 
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
-if not DASHBOARD_PASSWORD:
-    raise RuntimeError("DASHBOARD_PASSWORD is not set in .env — refusing to start.")
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "secondbrain123")
+SERVER_IP = os.getenv("SERVER_IP", "192.168.1.204")
 
-SERVER_IP = os.getenv("SERVER_IP")
-if not SERVER_IP:
-    raise RuntimeError("SERVER_IP is not set in .env — refusing to start.")
-
-# LAN_SUBNET: IP prefix for your local network (e.g. "192.168.1.").
-# Requests from matching IPs get the full dashboard without login.
-# Leave unset to disable LAN detection (external login required for everyone).
-LAN_SUBNET = os.getenv("LAN_SUBNET", "")
+# Local network addresses — full dashboard, no login required
+LOCAL_ADDRS = {"127.0.0.1", "::1", SERVER_IP, "192.168.1.1"}
 
 # ── External session cap ───────────────────────────────────────────────────────
 # Tracks external sessions: {session_token: last_seen_timestamp}
@@ -103,11 +96,7 @@ def _register_external_session() -> bool:
 
 def is_local():
     real_ip = request.headers.get("X-Real-IP", request.remote_addr)
-    if real_ip in {"127.0.0.1", "::1", SERVER_IP}:
-        return True
-    if LAN_SUBNET and real_ip.startswith(LAN_SUBNET):
-        return True
-    return False
+    return real_ip in LOCAL_ADDRS
 
 
 def login_required(f):
@@ -287,7 +276,7 @@ def api_traces():
         error     — error string or null
 
     Use for: debugging slow requests, spotting timeouts, correlating errors with messages.
-    Query example: curl http://<SERVER_IP>:8080/api/traces | python3 -m json.tool
+    Query example: curl http://192.168.1.204:8080/api/traces | python3 -m json.tool
     """
     try:
         p = Path("data/traces.json")
@@ -404,6 +393,7 @@ def api_ext_status():
         "total_requests": d.get("total_requests", 0),
         "gemini_count":   d.get("gemini_count", 0),
         "claude_count":   d.get("claude_count", 0),
+        "gpt_count":      d.get("gpt_count", 0),
         "weather":        d.get("weather", {}),
         "next_match":     d.get("next_match", {}),
         "api_status":     d.get("api_status", {}),
@@ -484,16 +474,15 @@ def api_test_weather():
     key = os.getenv("OPENWEATHER_API_KEY", "")
     if not key:
         return jsonify({"ok": False, "message": "OPENWEATHER_API_KEY not set in .env"})
-    city = os.getenv("USER_CITY", "London")
     try:
         url = (f"https://api.openweathermap.org/data/2.5/weather"
-               f"?q={city}&appid={key}&units=metric")
+               f"?q=Tel+Aviv&appid={key}&units=metric")
         with urllib.request.urlopen(url, timeout=5) as resp:
             d = _json.loads(resp.read())
         if d.get("cod") == 200:
             desc = d["weather"][0]["description"]
             temp = d["main"]["temp"]
-            return jsonify({"ok": True, "message": f"Valid · {city}: {temp}°C, {desc}"})
+            return jsonify({"ok": True, "message": f"Valid · Tel Aviv: {temp}°C, {desc}"})
         return jsonify({"ok": False, "message": d.get("message", "Invalid key")})
     except urllib.error.HTTPError as e:
         try:

@@ -179,7 +179,7 @@
     /* ── Counters ── */
     .counters {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
       gap: 10px;
     }
 
@@ -198,6 +198,7 @@
     }
     .counter-val.gemini { color: var(--blue); }
     .counter-val.claude { color: var(--purple); }
+    .counter-val.gpt    { color: var(--cyan); }
 
     .counter-label {
       font-size: 8px;
@@ -395,6 +396,10 @@
           <div class="counter-val claude" id="claude-count">--</div>
           <div class="counter-label">CLAUDE</div>
         </div>
+        <div class="counter-card">
+          <div class="counter-val gpt" id="gpt-count">--</div>
+          <div class="counter-label">GPT</div>
+        </div>
       </div>
       <div class="last-update">LAST UPDATE · <span id="last-update">--</span></div>
     </div>
@@ -493,6 +498,7 @@ async function fetchStatus() {
     document.getElementById('total-count').textContent  = d.total_requests ?? '--';
     document.getElementById('gemini-count').textContent = d.gemini_count   ?? '--';
     document.getElementById('claude-count').textContent = d.claude_count   ?? '--';
+    document.getElementById('gpt-count').textContent    = d.gpt_count      ?? '--';
     document.getElementById('last-update').textContent  = d.last_update    ?? '--';
 
     // API services
@@ -501,6 +507,7 @@ async function fetchStatus() {
       ['Telegram',     apiStatus.telegram     !== false],
       ['Gemini',       apiStatus.gemini       !== false],
       ['Claude',       apiStatus.claude       !== false],
+      ['OpenAI',       apiStatus.openai       !== false],
       ['OpenWeather',  apiStatus.openweather  !== false],
       ['Brave Search', apiStatus.brave        !== false],
     ];

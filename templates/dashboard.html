@@ -378,7 +378,7 @@
   /* ── Stats counters ───────────────────────────────────────────────────────── */
   .counters {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
     gap: 6px;
   }
 
@@ -400,6 +400,7 @@
 
   .counter-val.gemini { color: var(--blue); text-shadow: 0 0 10px rgba(74,176,255,0.3); }
   .counter-val.claude { color: var(--purple); text-shadow: 0 0 10px rgba(200,125,255,0.3); }
+  .counter-val.gpt    { color: var(--cyan); text-shadow: 0 0 10px rgba(0,212,200,0.3); }
 
   .counter-label {
     font-size: 9px;
@@ -452,6 +453,7 @@
 
   .log-badge.gemini { background: rgba(74,176,255,0.15); color: var(--blue); border: 1px solid rgba(74,176,255,0.3); }
   .log-badge.claude { background: rgba(200,125,255,0.15); color: var(--purple); border: 1px solid rgba(200,125,255,0.3); }
+  .log-badge.gpt    { background: rgba(0,212,200,0.15); color: var(--cyan); border: 1px solid rgba(0,212,200,0.3); }
 
   .log-text {
     font-size: 11px;
@@ -1264,6 +1266,10 @@
             <div class="counter-val claude" id="claude-count">0</div>
             <div class="counter-label">CLAUDE</div>
           </div>
+          <div class="counter-card">
+            <div class="counter-val gpt" id="gpt-count">0</div>
+            <div class="counter-label">GPT</div>
+          </div>
         </div>
 
         <div class="divider"></div>
@@ -1560,6 +1566,7 @@ async function fetchData() {
     document.getElementById('total-count').textContent = d.total_requests || 0;
     document.getElementById('gemini-count').textContent = d.gemini_count || 0;
     document.getElementById('claude-count').textContent = d.claude_count || 0;
+    document.getElementById('gpt-count').textContent    = d.gpt_count    || 0;
 
     // Activity log (recent_messages → log-entries, kept for compatibility)
     const logEl = document.getElementById('log-entries');
@@ -1571,7 +1578,7 @@ async function fetchData() {
         logEl.innerHTML = entries.slice(-6).reverse().map(msg => `
           <div class="log-entry">
             <div>
-              <span class="log-badge ${msg.model}">${msg.model === 'gemini' ? '⚡G' : '🧠C'}</span>
+              <span class="log-badge ${msg.model}">${msg.model === 'gemini' ? '⚡G' : msg.model === 'gpt' ? '🎨G' : '🧠C'}</span>
             </div>
             <div>
               <div class="log-text">${escHtml(msg.text)}</div>
@@ -1589,6 +1596,7 @@ async function fetchData() {
       ['Telegram',     apiStatus.telegram     !== false],
       ['Gemini',       apiStatus.gemini       !== false],
       ['Claude',       apiStatus.claude       !== false],
+      ['OpenAI',       apiStatus.openai       !== false],
       ['OpenWeather',  apiStatus.openweather  !== false],
       ['Brave Search', apiStatus.brave        !== false],
     ];
@@ -1819,7 +1827,9 @@ function renderExchanges(exchanges) {
   el.innerHTML = [...exchanges].reverse().map((ex, i) => {
     const modelBadge = ex.model === 'gemini'
       ? '<span class="log-badge gemini">⚡G</span>'
-      : '<span class="log-badge claude">🧠C</span>';
+      : ex.model === 'gpt'
+        ? '<span class="log-badge gpt">🎨G</span>'
+        : '<span class="log-badge claude">🧠C</span>';
 
     const ms = ex.elapsed_ms || 0;
     const timingClass = ms > 5000 ? 'slow' : '';

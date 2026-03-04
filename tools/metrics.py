@@ -74,6 +74,8 @@ def record_message(
         data["total_requests"] = data.get("total_requests", 0) + 1
         if model == "gemini":
             data["gemini_count"] = data.get("gemini_count", 0) + 1
+        elif model == "gpt":
+            data["gpt_count"] = data.get("gpt_count", 0) + 1
         else:
             data["claude_count"] = data.get("claude_count", 0) + 1
 
